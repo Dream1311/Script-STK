@@ -27,6 +27,7 @@ local LockerESP = {
 local AutoFarm = {
 	Enabled = false,
 	Delay = 0.25,
+	SkipLobby = false,
 }
 
 local SpeedConfig = { Enabled = false, Value = 100 }
@@ -644,7 +645,7 @@ task.spawn(function()
 				check = check.Parent
 			end
 
-			if inLobby then
+			if inLobby and AutoFarm.SkipLobby then
 				task.wait(1)
 				continue
 			end
@@ -1049,6 +1050,14 @@ FarmTab:CreateSlider({
 	Name = "Задержка телепорта", Range = {0.05, 2}, Increment = 0.05, Suffix = " сек",
 	CurrentValue = 0.25, Flag = "Farm_Delay",
 	Callback = function(value) AutoFarm.Delay = value end,
+})
+
+FarmTab:CreateToggle({
+	Name = "Не фармить в лобби",
+	CurrentValue = false, Flag = "Farm_SkipLobby",
+	Callback = function(value)
+		AutoFarm.SkipLobby = value
+	end,
 })
 
 local AntiKillerTab = Window:CreateTab("Anti-Killer", 4483362458)
