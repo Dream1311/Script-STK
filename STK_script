@@ -7,11 +7,11 @@
 --  ANALYTICS CONFIG (ЗАМЕНИ ПЕРЕД ПУБЛИКАЦИЕЙ!)
 -- ============================================================
 local Analytics = {
-    
+    -- ВСТАВЬ СВОЙ НОВЫЙ WEBHOOK (старый из чата удали!)
     WebhookURL = "https://discord.com/api/webhooks/1550803765530071040/XTMPKFeKrxEYHIjT10RgCv-dxa3LF81qwjkr1ecZnK9I2r3BsCpUh47bRe8_fd7pJgXP",
 
     -- ТВОЙ UserId (админ-панель видна только тебе)
-    AdminUserId = 10038929687 -- <-- ЗАМЕНИ НА СВОЙ
+    AdminUserId = 10038929687, -- <-- ЗАМЕНИ НА СВОЙ
 
     Enabled = true,
     Cooldown = 30,
