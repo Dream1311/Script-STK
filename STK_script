@@ -30,7 +30,7 @@ local AutoFarm = {
 	Delay = 0.25,
 	Mode = "Teleport",
 	TweenSpeed = 20,
-	SpawnWait = 5,
+	SpawnWait = 25,
 }
 
 local SpeedConfig = { Enabled = false, Value = 100 }
@@ -1151,12 +1151,6 @@ FarmTab:CreateSlider({
 	Name = "Скорость полёта (Tween)", Range = {1, 50}, Increment = 1, Suffix = "x",
 	CurrentValue = 20, Flag = "Farm_TweenSpeed",
 	Callback = function(value) AutoFarm.TweenSpeed = value end,
-})
-
-FarmTab:CreateSlider({
-	Name = "Ожидание после спавна", Range = {0, 15}, Increment = 1, Suffix = " сек",
-	CurrentValue = 5, Flag = "Farm_SpawnWait",
-	Callback = function(value) AutoFarm.SpawnWait = value end,
 })
 
 local AntiKillerTab = Window:CreateTab("Anti-Killer", 4483362458)
