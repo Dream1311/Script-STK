@@ -47,12 +47,18 @@ local AutoEscape = {
 	CheckInterval = 0.5,
 }
 
+local AntiAFKConfig = {
+	Enabled = false,
+}
+
 local activePlayerESP = {}
 local activeLockerESP = {}
 local farmSpawnPoints = {}
 local currentSpawnIndex = 1
 local unloaded = false
 local farmCycle = 0
+local escaped = false
+local antiAfkConnection = nil
 
 local getKiller
 local killAllPlayers
@@ -793,6 +799,7 @@ task.spawn(function()
 	while not unloaded do
 		task.wait(AutoEscape.CheckInterval)
 		if not AutoEscape.Enabled then continue end
+		if escaped then continue end
 
 		local char = LocalPlayer.Character
 		if not char then continue end
@@ -814,15 +821,49 @@ task.spawn(function()
 			check = check.Parent
 		end
 		
-		if inLobby then continue end
+		if inLobby then
+			escaped = false
+			continue
+		end
 
 		local escapePart = findEscapeTarget()
 		if not escapePart then continue end
 		
 		local distance = (root.Position - escapePart.Position).Magnitude
-		if distance < 10 then continue end
+		if distance < 10 then
+			escaped = true
+			Rayfield:Notify({
+				Title = "Auto Escape",
+				Content = "Ты сбежал! Телепорт отключён",
+				Duration = 3,
+			})
+			continue
+		end
 		
 		root.CFrame = CFrame.new(escapePart.Position + Vector3.new(0, 3, 0))
+	end
+end)
+
+task.spawn(function()
+	while not unloaded do
+		task.wait(2)
+		local char = LocalPlayer.Character
+		if not char then continue end
+		
+		local inLobby = false
+		local check = char
+		while check do
+			if check.Name == "_Lobby" then
+				inLobby = true
+				break
+			end
+			if check == workspace then break end
+			check = check.Parent
+		end
+		
+		if inLobby then
+			escaped = false
+		end
 	end
 end)
 
@@ -867,6 +908,35 @@ task.spawn(function()
 		end
 	end
 end)
+
+local function startAntiAfk()
+	if antiAfkConnection then return end
+	
+	antiAfkConnection = LocalPlayer.Idled:Connect(function()
+		local vu = game:GetService("VirtualUser")
+		vu:CaptureController()
+		vu:ClickButton2(Vector2.new())
+	end)
+	
+	Rayfield:Notify({
+		Title = "Anti AFK",
+		Content = "Anti AFK включён",
+		Duration = 3,
+	})
+end
+
+local function stopAntiAfk()
+	if antiAfkConnection then
+		antiAfkConnection:Disconnect()
+		antiAfkConnection = nil
+	end
+	
+	Rayfield:Notify({
+		Title = "Anti AFK",
+		Content = "Anti AFK выключен",
+		Duration = 3,
+	})
+end
 
 local Window = Rayfield:CreateWindow({
 	Name = "STK ESP + Auto Farm",
@@ -1015,12 +1085,6 @@ EscapeTab:CreateToggle({
 	Callback = function(value) AutoEscape.Enabled = value end,
 })
 
-EscapeTab:CreateSlider({
-	Name = "Частота проверки", Range = {0.1, 2}, Increment = 0.1, Suffix = " сек",
-	CurrentValue = 0.5, Flag = "AutoEscape_CheckInterval",
-	Callback = function(value) AutoEscape.CheckInterval = value end,
-})
-
 EscapeTab:CreateButton({
 	Name = "Тест: найти выход",
 	Callback = function()
@@ -1161,6 +1225,26 @@ TPTab:CreateButton({
 	end,
 })
 
+local AntiAfkTab = Window:CreateTab("Anti AFK", 4483362458)
+
+AntiAfkTab:CreateToggle({
+	Name = "Включить Anti AFK",
+	CurrentValue = false, Flag = "AntiAFK_Enabled",
+	Callback = function(value)
+		AntiAFKConfig.Enabled = value
+		if value then
+			startAntiAfk()
+		else
+			stopAntiAfk()
+		end
+	end,
+})
+
+AntiAfkTab:CreateParagraph({
+	Title = "Anti AFK",
+	Content = "Предотвращает кик за неактивность. Включи тумблер, и скрипт будет имитировать движение каждые 20 минут.",
+})
+
 local ControlTab = Window:CreateTab("Управление", 4483362458)
 
 ControlTab:CreateButton({
@@ -1178,6 +1262,7 @@ ControlTab:CreateButton({
 		unloaded = true
 		clearAllPlayerESP()
 		clearAllLockerESP()
+		stopAntiAfk()
 		for _, obj in ipairs(workspace:GetDescendants()) do
 			if obj.Name == "PlayerESP_Highlight" or obj.Name == "PlayerESP_Billboard"
 				or obj.Name == "LockerESP_Highlight" then
@@ -1196,4 +1281,4 @@ ControlTab:CreateButton({
 	end,
 })
 
-print("[STK ESP + Farm + Locker ESP] Загружен. Меню по RightShift.")
+print("[STK ESP + Farm + Locker ESP + Anti AFK] Загружен. Меню по RightShift.")
