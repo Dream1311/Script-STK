@@ -1248,7 +1248,6 @@ AntiAfkTab:CreateToggle({
 		end
 	end,
 })
-
 AntiAfkTab:CreateParagraph({
 	Title = "Anti AFK",
 	Content = "Предотвращает кик за неактивность. Включи тумблер, и скрипт будет имитировать движение каждые 20 минут.",
