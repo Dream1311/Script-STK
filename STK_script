@@ -28,9 +28,9 @@ local LockerESP = {
 local AutoFarm = {
 	Enabled = false,
 	Delay = 0.25,
-	SkipLobby = false,
 	Mode = "Teleport",
-	TweenSpeed = 1,
+	TweenSpeed = 20,
+	SpawnWait = 5,
 }
 
 local SpeedConfig = { Enabled = false, Value = 100 }
@@ -64,6 +64,8 @@ local farmCycle = 0
 local escaped = false
 local antiAfkConnection = nil
 local activeTween = nil
+local spawnStartTime = nil
+local lastInLobby = true
 
 local getKiller
 local killAllPlayers
@@ -494,44 +496,6 @@ local function scanAllSpawnPoints()
 	farmSpawnPoints = newList
 end
 
-local function tweenToPoint(point, callback)
-	if not point or not point.Parent then
-		if callback then callback(false) end
-		return
-	end
-	local char = LocalPlayer.Character
-	if not char then
-		if callback then callback(false) end
-		return
-	end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then
-		if callback then callback(false) end
-		return
-	end
-
-	local targetPos = point.Position + Vector3.new(0, 3, 0)
-	local distance = (root.Position - targetPos).Magnitude
-	local duration = distance / (AutoFarm.TweenSpeed * 100)
-
-	if activeTween then
-		activeTween:Cancel()
-		activeTween = nil
-	end
-
-	local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-	activeTween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
-	activeTween:Play()
-
-	activeTween.Completed:Connect(function(state)
-		if state == Enum.PlaybackState.Completed then
-			if callback then callback(true) end
-		else
-			if callback then callback(false) end
-		end
-	end)
-end
-
 local function farmTeleportToSpawnPoint(point)
 	if not point or not point.Parent then return false end
 	local char = LocalPlayer.Character
@@ -581,9 +545,8 @@ local function farmTweenToSpawnPoint(point)
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if not root then return false end
 
-	local oldPos = root.Position
 	local targetPos = point.Position + Vector3.new(0, 3, 0)
-	local distance = (oldPos - targetPos).Magnitude
+	local distance = (root.Position - targetPos).Magnitude
 	local duration = distance / (AutoFarm.TweenSpeed * 100)
 
 	if activeTween then
@@ -735,9 +698,24 @@ task.spawn(function()
 				check = check.Parent
 			end
 
-			if inLobby and AutoFarm.SkipLobby then
+			if inLobby then
+				lastInLobby = true
+				spawnStartTime = nil
 				task.wait(1)
 				continue
+			end
+
+			if lastInLobby and not inLobby then
+				lastInLobby = false
+				spawnStartTime = tick()
+			end
+
+			if spawnStartTime then
+				local elapsed = tick() - spawnStartTime
+				if elapsed < AutoFarm.SpawnWait then
+					task.wait(0.5)
+					continue
+				end
 			end
 
 			local killerChar, killerRoot = getKiller()
@@ -1146,14 +1124,6 @@ FarmTab:CreateSlider({
 	Callback = function(value) AutoFarm.Delay = value end,
 })
 
-FarmTab:CreateToggle({
-	Name = "Не фармить в лобби",
-	CurrentValue = false, Flag = "Farm_SkipLobby",
-	Callback = function(value)
-		AutoFarm.SkipLobby = value
-	end,
-})
-
 FarmTab:CreateSection("Способ фарма")
 
 FarmTab:CreateDropdown({
@@ -1167,9 +1137,15 @@ FarmTab:CreateDropdown({
 })
 
 FarmTab:CreateSlider({
-	Name = "Скорость полёта (Tween)", Range = {1, 20}, Increment = 1, Suffix = "x",
-	CurrentValue = 10, Flag = "Farm_TweenSpeed",
+	Name = "Скорость полёта (Tween)", Range = {1, 50}, Increment = 1, Suffix = "x",
+	CurrentValue = 20, Flag = "Farm_TweenSpeed",
 	Callback = function(value) AutoFarm.TweenSpeed = value end,
+})
+
+FarmTab:CreateSlider({
+	Name = "Ожидание после спавна", Range = {0, 15}, Increment = 1, Suffix = " сек",
+	CurrentValue = 5, Flag = "Farm_SpawnWait",
+	Callback = function(value) AutoFarm.SpawnWait = value end,
 })
 
 local AntiKillerTab = Window:CreateTab("Anti-Killer", 4483362458)
