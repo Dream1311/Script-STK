@@ -88,6 +88,16 @@ local function isInLobby(instance)
 	return false
 end
 
+local function isInLobbyTeam()
+	if LocalPlayer.Team then
+		local teamName = string.lower(LocalPlayer.Team.Name)
+		if string.find(teamName, "lobby") or string.find(teamName, "лобби") then
+			return true
+		end
+	end
+	return false
+end
+
 local function isPlayerCharacter(instance)
 	local model = instance:FindFirstAncestorOfClass("Model")
 	if not model then return false end
@@ -687,25 +697,25 @@ task.spawn(function()
 				continue
 			end
 
-			local inLobby = false
+			local inLobbyZone = false
 			local check = char
 			while check do
 				if check.Name == "_Lobby" then
-					inLobby = true
+					inLobbyZone = true
 					break
 				end
 				if check == workspace then break end
 				check = check.Parent
 			end
 
-			if inLobby then
+			if inLobbyZone or isInLobbyTeam() then
 				lastInLobby = true
 				spawnStartTime = nil
 				task.wait(1)
 				continue
 			end
 
-			if lastInLobby and not inLobby then
+			if lastInLobby and not inLobbyZone then
 				lastInLobby = false
 				spawnStartTime = tick()
 			end
@@ -883,19 +893,20 @@ task.spawn(function()
 		local root = char:FindFirstChild("HumanoidRootPart")
 		if not root then continue end
 		
-		local inLobby = false
+		local inLobbyZone = false
 		local check = char
 		while check do
 			if check.Name == "_Lobby" then
-				inLobby = true
+				inLobbyZone = true
 				break
 			end
 			if check == workspace then break end
 			check = check.Parent
 		end
 		
-		if inLobby then
+		if inLobbyZone or isInLobbyTeam() then
 			escaped = false
+			task.wait(1)
 			continue
 		end
 
@@ -923,18 +934,18 @@ task.spawn(function()
 		local char = LocalPlayer.Character
 		if not char then continue end
 		
-		local inLobby = false
+		local inLobbyZone = false
 		local check = char
 		while check do
 			if check.Name == "_Lobby" then
-				inLobby = true
+				inLobbyZone = true
 				break
 			end
 			if check == workspace then break end
 			check = check.Parent
 		end
 		
-		if inLobby then
+		if inLobbyZone or isInLobbyTeam() then
 			escaped = false
 		end
 	end
