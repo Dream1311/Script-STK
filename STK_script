@@ -1,59 +1,982 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+-- ============================================================
+--  LYNXORA UI LIBRARY (Neverlose-style, custom)
+-- ============================================================
+local Neverlose = {}
+Neverlose.__index = Neverlose
+
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+
+local Theme = {
+    Background      = Color3.fromRGB(18, 18, 22),
+    Surface         = Color3.fromRGB(24, 24, 30),
+    SurfaceAlt      = Color3.fromRGB(30, 30, 38),
+    Outline         = Color3.fromRGB(45, 45, 55),
+    Text            = Color3.fromRGB(235, 235, 240),
+    TextDim         = Color3.fromRGB(140, 140, 155),
+    Accent          = Color3.fromRGB(160, 90, 255),
+    AccentBright    = Color3.fromRGB(190, 120, 255),
+    AccentDark      = Color3.fromRGB(110, 60, 200),
+    Success         = Color3.fromRGB(90, 220, 130),
+    Danger          = Color3.fromRGB(255, 75, 90),
+    Warning         = Color3.fromRGB(255, 190, 80),
+}
+
+local TitleGradient = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(160, 90, 255)),
+    ColorSequenceKeypoint.new(0.35, Color3.fromRGB(90, 180, 255)),
+    ColorSequenceKeypoint.new(0.70, Color3.fromRGB(255, 120, 220)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 120)),
+})
+
+local Fonts = {
+    Bold    = Enum.Font.GothamBold,
+    Medium  = Enum.Font.GothamMedium,
+    Regular = Enum.Font.Gotham,
+}
+
+local function new(class, props, children)
+    local inst = Instance.new(class)
+    for k, v in pairs(props or {}) do
+        inst[k] = v
+    end
+    for _, c in ipairs(children or {}) do
+        c.Parent = inst
+    end
+    return inst
+end
+
+local function corner(parent, radius)
+    return new("UICorner", { CornerRadius = UDim.new(0, radius or 6), Parent = parent })
+end
+
+local function stroke(parent, color, thickness, transparency)
+    return new("UIStroke", {
+        Color = color or Theme.Outline,
+        Thickness = thickness or 1,
+        Transparency = transparency or 0,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Parent = parent,
+    })
+end
+
+local function tween(inst, props, time, style, dir)
+    return TweenService:Create(
+        inst,
+        TweenInfo.new(time or 0.15, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out),
+        props
+    ):Play()
+end
+
+function Neverlose.new(title, subtitle)
+    local self = setmetatable({}, Neverlose)
+    self.Title = title or "Lynxora"
+    self.Subtitle = subtitle or ""
+    self.Tabs = {}
+    self.Elements = {}
+    self.ActiveTab = nil
+    self.Opened = true
+    self.Dragging = false
+    self.DragStart = nil
+    self.StartPos = nil
+
+    self.Gui = new("ScreenGui", {
+        Name = "LynxoraUI",
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        IgnoreGuiInset = true,
+    })
+
+    if gethui then
+        self.Gui.Parent = gethui()
+    elseif CoreGui then
+        self.Gui.Parent = CoreGui
+    else
+        self.Gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    end
+
+    self:_buildMain()
+    self:_buildKeybind()
+    self:_buildToggleButton()
+
+    return self
+end
+
+function Neverlose:_buildMain()
+    local main = new("Frame", {
+        Name = "Main",
+        Size = UDim2.new(0, 580, 0, 420),
+        Position = UDim2.new(0.5, -290, 0.5, -210),
+        BackgroundColor3 = Theme.Background,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        Parent = self.Gui,
+    })
+    self.Main = main
+    corner(main, 10)
+    stroke(main, Theme.Outline, 1)
+
+    local topbar = new("Frame", {
+        Name = "Topbar",
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = main,
+    })
+    self.Topbar = topbar
+
+    new("Frame", {
+        Size = UDim2.new(0, 3, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        Parent = topbar,
+    })
+
+    -- Название с градиентом
+    local titleLabel = new("TextLabel", {
+        Size = UDim2.new(1, -120, 1, 0),
+        Position = UDim2.new(0, 16, 0, 0),
+        BackgroundTransparency = 1,
+        Text = self.Title,
+        Font = Fonts.Bold,
+        TextSize = 15,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = topbar,
+    })
+
+    local titleGrad = Instance.new("UIGradient")
+    titleGrad.Color = TitleGradient
+    titleGrad.Parent = titleLabel
+
+    task.spawn(function()
+        while titleLabel.Parent do
+            for i = 0, 1, 0.02 do
+                if not titleLabel.Parent then return end
+                titleGrad.Offset = Vector2.new(i, 0)
+                task.wait(0.03)
+            end
+            for i = 1, 0, -0.02 do
+                if not titleLabel.Parent then return end
+                titleGrad.Offset = Vector2.new(i, 0)
+                task.wait(0.03)
+            end
+        end
+    end)
+
+    -- Кнопка закрытия
+    local closeBtn = new("TextButton", {
+        Name = "Close",
+        Size = UDim2.new(0, 32, 0, 24),
+        Position = UDim2.new(1, -38, 0, 6),
+        BackgroundColor3 = Theme.SurfaceAlt,
+        Text = "✕",
+        Font = Fonts.Bold,
+        TextSize = 13,
+        TextColor3 = Theme.TextDim,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Parent = topbar,
+    })
+    corner(closeBtn, 5)
+
+    closeBtn.MouseEnter:Connect(function()
+        tween(closeBtn, { BackgroundColor3 = Theme.Danger, TextColor3 = Color3.new(1,1,1) })
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        tween(closeBtn, { BackgroundColor3 = Theme.SurfaceAlt, TextColor3 = Theme.TextDim })
+    end)
+    closeBtn.MouseButton1Click:Connect(function()
+        self:Toggle(false)
+    end)
+
+    -- Сайдбар
+    local sidebar = new("Frame", {
+        Name = "Sidebar",
+        Size = UDim2.new(0, 150, 1, -36),
+        Position = UDim2.new(0, 0, 0, 36),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = main,
+    })
+    self.Sidebar = sidebar
+
+    new("Frame", {
+        Size = UDim2.new(0, 1, 1, 0),
+        Position = UDim2.new(1, 0, 0, 0),
+        BackgroundColor3 = Theme.Outline,
+        BorderSizePixel = 0,
+        Parent = sidebar,
+    })
+
+    local tabList = new("ScrollingFrame", {
+        Name = "TabList",
+        Size = UDim2.new(1, -8, 1, -8),
+        Position = UDim2.new(0, 4, 0, 4),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Theme.Outline,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Parent = sidebar,
+    })
+    self.TabList = tabList
+
+    new("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 4),
+        Parent = tabList,
+    })
+
+    local content = new("Frame", {
+        Name = "Content",
+        Size = UDim2.new(1, -150, 1, -36),
+        Position = UDim2.new(0, 150, 0, 36),
+        BackgroundTransparency = 1,
+        Parent = main,
+    })
+    self.Content = content
+
+    local bottom = new("Frame", {
+        Name = "Bottom",
+        Size = UDim2.new(1, 0, 0, 22),
+        Position = UDim2.new(0, 0, 1, -22),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = main,
+    })
+    new("Frame", {
+        Size = UDim2.new(1, 0, 0, 1),
+        BackgroundColor3 = Theme.Outline,
+        BorderSizePixel = 0,
+        Parent = bottom,
+    })
+    new("TextLabel", {
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = self.Subtitle,
+        Font = Fonts.Regular,
+        TextSize = 11,
+        TextColor3 = Theme.TextDim,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = bottom,
+    })
+    new("TextLabel", {
+        Size = UDim2.new(0, 120, 1, 0),
+        Position = UDim2.new(1, -130, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "K — toggle menu",
+        Font = Fonts.Regular,
+        TextSize = 11,
+        TextColor3 = Theme.TextDim,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = bottom,
+    })
+
+    self:_makeDraggable(topbar, main)
+end
+
+function Neverlose:_makeDraggable(dragArea, target)
+    dragArea.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.Dragging = true
+            self.DragStart = input.Position
+            self.StartPos = target.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    self.Dragging = false
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if self.Dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - self.DragStart
+            target.Position = UDim2.new(
+                self.StartPos.X.Scale,
+                self.StartPos.X.Offset + delta.X,
+                self.StartPos.Y.Scale,
+                self.StartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+function Neverlose:_buildToggleButton()
+    local btn = new("TextButton", {
+        Name = "FloatingBtn",
+        Size = UDim2.new(0, 42, 0, 42),
+        Position = UDim2.new(0, 20, 0, 20),
+        BackgroundColor3 = Theme.Surface,
+        Text = "LX",
+        Font = Fonts.Bold,
+        TextSize = 15,
+        TextColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Visible = false,
+        Parent = self.Gui,
+    })
+    corner(btn, 8)
+    stroke(btn, Theme.Accent, 1)
+
+    btn.MouseButton1Click:Connect(function()
+        self:Toggle(true)
+    end)
+
+    self.FloatingBtn = btn
+end
+
+function Neverlose:_buildKeybind()
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Enum.KeyCode.K then
+            self:Toggle(not self.Opened)
+        end
+    end)
+end
+
+function Neverlose:Toggle(state)
+    self.Opened = state
+    self.Main.Visible = state
+    self.FloatingBtn.Visible = not state
+end
+
+function Neverlose:Tab(name)
+    local tabBtn = new("TextButton", {
+        Name = name .. "Tab",
+        Size = UDim2.new(1, 0, 0, 32),
+        BackgroundColor3 = Theme.Surface,
+        Text = "",
+        AutoButtonColor = false,
+        BorderSizePixel = 0,
+        Parent = self.TabList,
+    })
+    corner(tabBtn, 6)
+
+    local indicator = new("Frame", {
+        Size = UDim2.new(0, 3, 0, 16),
+        Position = UDim2.new(0, 0, 0.5, -8),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        Visible = false,
+        Parent = tabBtn,
+    })
+
+    local label = new("TextLabel", {
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = name,
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.TextDim,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = tabBtn,
+    })
+
+    local page = new("ScrollingFrame", {
+        Name = name .. "Page",
+        Size = UDim2.new(1, -20, 1, -20),
+        Position = UDim2.new(0, 10, 0, 10),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = Theme.Outline,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false,
+        Parent = self.Content,
+    })
+
+    new("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 6),
+        Parent = page,
+    })
+
+    local tabData = {
+        Button = tabBtn,
+        Label = label,
+        Indicator = indicator,
+        Page = page,
+        Name = name,
+    }
+
+    tabBtn.MouseEnter:Connect(function()
+        if self.ActiveTab ~= tabData then
+            tween(tabBtn, { BackgroundColor3 = Theme.SurfaceAlt })
+        end
+    end)
+    tabBtn.MouseLeave:Connect(function()
+        if self.ActiveTab ~= tabData then
+            tween(tabBtn, { BackgroundColor3 = Theme.Surface })
+        end
+    end)
+
+    tabBtn.MouseButton1Click:Connect(function()
+        self:SelectTab(tabData)
+    end)
+
+    table.insert(self.Tabs, tabData)
+
+    if not self.ActiveTab then
+        self:SelectTab(tabData)
+    end
+
+    return tabData
+end
+
+function Neverlose:SelectTab(tabData)
+    if self.ActiveTab then
+        local prev = self.ActiveTab
+        prev.Indicator.Visible = false
+        prev.Label.TextColor3 = Theme.TextDim
+        prev.Button.BackgroundColor3 = Theme.Surface
+        prev.Page.Visible = false
+    end
+
+    self.ActiveTab = tabData
+    tabData.Indicator.Visible = true
+    tabData.Label.TextColor3 = Theme.Text
+    tabData.Button.BackgroundColor3 = Theme.SurfaceAlt
+    tabData.Page.Visible = true
+end
+
+function Neverlose:Section(tab, text)
+    local holder = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 24),
+        BackgroundTransparency = 1,
+        Parent = tab.Page,
+    })
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = text:upper(),
+        Font = Fonts.Bold,
+        TextSize = 11,
+        TextColor3 = Theme.Accent,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = holder,
+    })
+    return holder
+end
+
+function Neverlose:Toggle_(tab, name, default, callback)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = tab.Page,
+    })
+    corner(row, 6)
+    stroke(row, Theme.Outline, 1, 0.5)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -80, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = name,
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+
+    local switch = new("Frame", {
+        Name = "Switch",
+        Size = UDim2.new(0, 40, 0, 20),
+        Position = UDim2.new(1, -52, 0.5, -10),
+        BackgroundColor3 = default and Theme.Accent or Theme.SurfaceAlt,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    corner(switch, 10)
+    stroke(switch, Theme.Outline, 1, 0.4)
+
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
+        BackgroundColor3 = Color3.fromRGB(240, 240, 245),
+        BorderSizePixel = 0,
+        Parent = switch,
+    })
+    corner(knob, 8)
+
+    local hitbox = new("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        Parent = row,
+    })
+
+    local state = default
+    local function apply(v)
+        state = v
+        tween(switch, { BackgroundColor3 = v and Theme.Accent or Theme.SurfaceAlt }, 0.15)
+        tween(knob, {
+            Position = v and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
+        }, 0.15)
+        if callback then callback(v) end
+    end
+
+    hitbox.MouseButton1Click:Connect(function()
+        apply(not state)
+    end)
+
+    row.MouseEnter:Connect(function()
+        tween(row, { BackgroundColor3 = Theme.SurfaceAlt })
+    end)
+    row.MouseLeave:Connect(function()
+        tween(row, { BackgroundColor3 = Theme.Surface })
+    end)
+
+    return { Set = apply, Get = function() return state end, Frame = row }
+end
+
+function Neverlose:Slider(tab, name, min, max, default, callback)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 48),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = tab.Page,
+    })
+    corner(row, 6)
+    stroke(row, Theme.Outline, 1, 0.5)
+
+    local label = new("TextLabel", {
+        Size = UDim2.new(1, -24, 0, 18),
+        Position = UDim2.new(0, 12, 0, 4),
+        BackgroundTransparency = 1,
+        Text = name,
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+
+    local valueLabel = new("TextLabel", {
+        Size = UDim2.new(0, 80, 0, 18),
+        Position = UDim2.new(1, -92, 0, 4),
+        BackgroundTransparency = 1,
+        Text = tostring(default),
+        Font = Fonts.Bold,
+        TextSize = 13,
+        TextColor3 = Theme.Accent,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = row,
+    })
+
+    local barBg = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 6),
+        Position = UDim2.new(0, 12, 0, 30),
+        BackgroundColor3 = Theme.SurfaceAlt,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    corner(barBg, 3)
+
+    local fill = new("Frame", {
+        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        Parent = barBg,
+    })
+    corner(fill, 3)
+
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 12, 0, 12),
+        Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6),
+        BackgroundColor3 = Color3.fromRGB(240, 240, 245),
+        BorderSizePixel = 0,
+        ZIndex = 2,
+        Parent = barBg,
+    })
+    corner(knob, 6)
+    stroke(knob, Theme.Accent, 1)
+
+    local dragging = false
+    local hitbox = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 20),
+        Position = UDim2.new(0, 0, 0.5, -10),
+        BackgroundTransparency = 1,
+        Text = "",
+        Parent = barBg,
+    })
+
+    local value = default
+    local function setFromX(x)
+        local rel = math.clamp((x - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X, 0, 1)
+        local v = min + (max - min) * rel
+        v = math.floor(v + 0.5)
+        value = v
+        valueLabel.Text = tostring(v)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        knob.Position = UDim2.new(rel, -6, 0.5, -6)
+        if callback then callback(v) end
+    end
+
+    hitbox.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            setFromX(input.Position.X)
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            setFromX(input.Position.X)
+        end
+    end)
+
+    return {
+        Set = function(v)
+            local rel = math.clamp((v - min) / (max - min), 0, 1)
+            value = v
+            valueLabel.Text = tostring(v)
+            fill.Size = UDim2.new(rel, 0, 1, 0)
+            knob.Position = UDim2.new(rel, -6, 0.5, -6)
+            if callback then callback(v) end
+        end,
+        Get = function() return value end,
+        Frame = row,
+    }
+end
+
+function Neverlose:Button(tab, name, callback)
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = Theme.Surface,
+        Text = "",
+        AutoButtonColor = false,
+        BorderSizePixel = 0,
+        Parent = tab.Page,
+    })
+    corner(btn, 6)
+    stroke(btn, Theme.Outline, 1, 0.5)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = name,
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = btn,
+    })
+
+    local arrow = new("TextLabel", {
+        Size = UDim2.new(0, 20, 1, 0),
+        Position = UDim2.new(1, -24, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "›",
+        Font = Fonts.Bold,
+        TextSize = 16,
+        TextColor3 = Theme.TextDim,
+        Parent = btn,
+    })
+
+    btn.MouseEnter:Connect(function()
+        tween(btn, { BackgroundColor3 = Theme.SurfaceAlt })
+        tween(arrow, { TextColor3 = Theme.Accent, Position = UDim2.new(1, -20, 0, 0) })
+    end)
+    btn.MouseLeave:Connect(function()
+        tween(btn, { BackgroundColor3 = Theme.Surface })
+        tween(arrow, { TextColor3 = Theme.TextDim, Position = UDim2.new(1, -24, 0, 0) })
+    end)
+
+    btn.MouseButton1Click:Connect(function()
+        if callback then callback() end
+    end)
+
+    return btn
+end
+
+-- Dropdown заменён на "переключалку по кругу" — без выпадающего списка
+function Neverlose:Dropdown(tab, name, options, default, callback)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = tab.Page,
+    })
+    corner(row, 6)
+    stroke(row, Theme.Outline, 1, 0.5)
+
+    new("TextLabel", {
+        Size = UDim2.new(0.5, -12, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = name,
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+
+    local currentIndex = 1
+    for i, opt in ipairs(options) do
+        if opt == default then currentIndex = i break end
+    end
+    local current = options[currentIndex]
+
+    local valueLabel = new("TextLabel", {
+        Size = UDim2.new(0.5, -40, 1, 0),
+        Position = UDim2.new(0.5, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = current .. "  ⟳",
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.Accent,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = row,
+    })
+
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        Parent = row,
+    })
+
+    btn.MouseEnter:Connect(function()
+        tween(row, { BackgroundColor3 = Theme.SurfaceAlt })
+    end)
+    btn.MouseLeave:Connect(function()
+        tween(row, { BackgroundColor3 = Theme.Surface })
+    end)
+
+    btn.MouseButton1Click:Connect(function()
+        currentIndex = currentIndex + 1
+        if currentIndex > #options then
+            currentIndex = 1
+        end
+        current = options[currentIndex]
+        valueLabel.Text = current .. "  ⟳"
+
+        valueLabel.TextColor3 = Theme.AccentBright
+        tween(valueLabel, { TextColor3 = Theme.Accent }, 0.3)
+
+        if callback then callback(current) end
+    end)
+
+    return {
+        Get = function() return current end,
+        Set = function(v)
+            for i, opt in ipairs(options) do
+                if opt == v then
+                    currentIndex = i
+                    current = opt
+                    valueLabel.Text = v .. "  ⟳"
+                    break
+                end
+            end
+        end,
+        Frame = row,
+    }
+end
+
+function Neverlose:ColorPicker(tab, name, default, callback)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = tab.Page,
+    })
+    corner(row, 6)
+    stroke(row, Theme.Outline, 1, 0.5)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -80, 0, 20),
+        Position = UDim2.new(0, 12, 0, 4),
+        BackgroundTransparency = 1,
+        Text = name,
+        Font = Fonts.Medium,
+        TextSize = 13,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+
+    local swatch = new("Frame", {
+        Size = UDim2.new(0, 24, 0, 24),
+        Position = UDim2.new(1, -36, 0, 10),
+        BackgroundColor3 = default,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    corner(swatch, 5)
+    stroke(swatch, Theme.Outline, 1)
+
+    local palette = {
+        Color3.fromRGB(255, 75, 90),
+        Color3.fromRGB(255, 130, 60),
+        Color3.fromRGB(255, 190, 80),
+        Color3.fromRGB(90, 220, 130),
+        Color3.fromRGB(80, 180, 255),
+        Color3.fromRGB(160, 90, 255),
+        Color3.fromRGB(255, 100, 200),
+        Color3.fromRGB(240, 240, 245),
+    }
+
+    local swatchRow = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 16),
+        Position = UDim2.new(0, 12, 0, 24),
+        BackgroundTransparency = 1,
+        Parent = row,
+    })
+    new("UIListLayout", {
+        FillDirection = Enum.FillDirection.Horizontal,
+        Padding = UDim.new(0, 4),
+        Parent = swatchRow,
+    })
+
+    for _, col in ipairs(palette) do
+        local c = new("TextButton", {
+            Size = UDim2.new(0, 14, 0, 14),
+            BackgroundColor3 = col,
+            Text = "",
+            AutoButtonColor = false,
+            BorderSizePixel = 0,
+            Parent = swatchRow,
+        })
+        corner(c, 3)
+        c.MouseButton1Click:Connect(function()
+            swatch.BackgroundColor3 = col
+            if callback then callback(col) end
+        end)
+    end
+
+    return {
+        Set = function(col)
+            swatch.BackgroundColor3 = col
+            if callback then callback(col) end
+        end,
+        Frame = row,
+    }
+end
+
+function Neverlose:Notify(title, content, duration)
+    duration = duration or 3
+    local notif = new("Frame", {
+        Size = UDim2.new(0, 280, 0, 60),
+        Position = UDim2.new(1, 300, 0, 20),
+        BackgroundColor3 = Theme.Surface,
+        BorderSizePixel = 0,
+        Parent = self.Gui,
+    })
+    corner(notif, 8)
+    stroke(notif, Theme.Accent, 1)
+
+    new("Frame", {
+        Size = UDim2.new(0, 3, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        Parent = notif,
+    })
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 20),
+        Position = UDim2.new(0, 14, 0, 6),
+        BackgroundTransparency = 1,
+        Text = title,
+        Font = Fonts.Bold,
+        TextSize = 13,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = notif,
+    })
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 24),
+        Position = UDim2.new(0, 14, 0, 26),
+        BackgroundTransparency = 1,
+        Text = content,
+        Font = Fonts.Regular,
+        TextSize = 12,
+        TextColor3 = Theme.TextDim,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = notif,
+    })
+
+    local count = 0
+    for _, child in ipairs(self.Gui:GetChildren()) do
+        if child:IsA("Frame") and child ~= notif and child ~= self.Main and child.Name ~= "FloatingBtn" then
+            count = count + 1
+        end
+    end
+    local targetY = 20 + count * 68
+
+    tween(notif, { Position = UDim2.new(1, -300, 0, targetY) }, 0.25)
+
+    task.delay(duration, function()
+        tween(notif, { Position = UDim2.new(1, 300, 0, targetY) }, 0.25)
+        task.wait(0.3)
+        notif:Destroy()
+    end)
+end
+
+function Neverlose:Destroy()
+    if self.Gui then
+        self.Gui:Destroy()
+    end
+end
+
+-- ============================================================
+--  ЛОГИКА STK ESP + AUTO FARM
+-- ============================================================
+
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
 pcall(function()
-	workspace.FluidForces = Enum.FluidForces.Default
+    workspace.FluidForces = Enum.FluidForces.Default
 end)
 
 local PlayerESP = {
-	Enabled = true, ShowName = true, ShowDistance = true, MaxDistance = 1000,
-	KillerColor = Color3.fromRGB(255, 50, 50),
-	SurvivorColor = Color3.fromRGB(0, 150, 255),
-	SeeThroughWalls = true,
+    Enabled = true, ShowName = true, ShowDistance = true, MaxDistance = 1000,
+    KillerColor = Color3.fromRGB(255, 50, 50),
+    SurvivorColor = Color3.fromRGB(0, 150, 255),
+    SeeThroughWalls = true,
 }
 
 local LockerESP = {
-	Enabled = true,
-	EmptyColor = Color3.fromRGB(0, 255, 100),
-	OccupiedColor = Color3.fromRGB(255, 0, 0),
-	MaxDistance = 2000,
-	CheckRadius = 5,
+    Enabled = true,
+    EmptyColor = Color3.fromRGB(0, 255, 100),
+    OccupiedColor = Color3.fromRGB(255, 0, 0),
+    MaxDistance = 2000,
+    CheckRadius = 5,
 }
 
 local AutoFarm = {
-	Enabled = false,
-	Delay = 0.25,
-	Mode = "Teleport",
-	TweenSpeed = 20,
-	SpawnWait = 25,
+    Enabled = false,
+    Delay = 0.25,
+    Mode = "Teleport",
+    TweenSpeed = 20,
+    SpawnWait = 25,
 }
 
 local SpeedConfig = { Enabled = false, Value = 100 }
-
-local KillAllConfig = {
-	Enabled = false,
-	Interval = 0.3,
-}
-
-local AntiKiller = {
-	Enabled = false,
-	SafeDistance = 150,
-	CheckInterval = 0.05,
-}
-
-local AutoEscape = {
-	Enabled = false,
-	CheckInterval = 0.5,
-}
-
-local AntiAFKConfig = {
-	Enabled = false,
-}
+local KillAllConfig = { Enabled = false, Interval = 0.3 }
+local AntiKiller = { Enabled = false, SafeDistance = 150, CheckInterval = 0.05 }
+local AutoEscape = { Enabled = false, CheckInterval = 0.5 }
+local AntiAFKConfig = { Enabled = false }
 
 local activePlayerESP = {}
 local activeLockerESP = {}
@@ -72,1314 +995,1334 @@ local killAllPlayers
 local teleportToPlayer
 
 local function findChildOfClass(instance, className)
-	for _, child in ipairs(instance:GetChildren()) do
-		if child.ClassName == className then return child end
-	end
-	return nil
+    for _, child in ipairs(instance:GetChildren()) do
+        if child.ClassName == className then return child end
+    end
+    return nil
 end
 
 local function isInLobby(instance)
-	local current = instance
-	while current do
-		if current.Name == "_Lobby" then return true end
-		if current == workspace then break end
-		current = current.Parent
-	end
-	return false
+    local current = instance
+    while current do
+        if current.Name == "_Lobby" then return true end
+        if current == workspace then break end
+        current = current.Parent
+    end
+    return false
 end
 
 local function isInLobbyTeam()
-	if LocalPlayer.Team then
-		local teamName = string.lower(LocalPlayer.Team.Name)
-		if string.find(teamName, "lobby") or string.find(teamName, "лобби") then
-			return true
-		end
-	end
-	return false
+    if LocalPlayer.Team then
+        local teamName = string.lower(LocalPlayer.Team.Name)
+        if string.find(teamName, "lobby") or string.find(teamName, "лобби") then
+            return true
+        end
+    end
+    return false
 end
 
 local function isPlayerCharacter(instance)
-	local model = instance:FindFirstAncestorOfClass("Model")
-	if not model then return false end
-	if not findChildOfClass(model, "Humanoid") then return false end
-	return Players:GetPlayerFromCharacter(model) ~= nil
+    local model = instance:FindFirstAncestorOfClass("Model")
+    if not model then return false end
+    if not findChildOfClass(model, "Humanoid") then return false end
+    return Players:GetPlayerFromCharacter(model) ~= nil
 end
 
 local function isLootStillValid(target)
-	if not target or not target.Parent then return false end
-	if not target:IsA("BasePart") then return false end
-	local current = target.Parent
-	local inContainer = false
-	while current do
-		if current.Name == "DebrisFolder" then return false end
-		if current.Name == "LootSpawns" or current.Name == "Collectables" then
-			inContainer = true
-			break
-		end
-		if current == workspace then break end
-		current = current.Parent
-	end
-	if not inContainer then return false end
-	local pos = target.Position
-	if pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then return false end
-	return true
+    if not target or not target.Parent then return false end
+    if not target:IsA("BasePart") then return false end
+    local current = target.Parent
+    local inContainer = false
+    while current do
+        if current.Name == "DebrisFolder" then return false end
+        if current.Name == "LootSpawns" or current.Name == "Collectables" then
+            inContainer = true
+            break
+        end
+        if current == workspace then break end
+        current = current.Parent
+    end
+    if not inContainer then return false end
+    local pos = target.Position
+    if pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then return false end
+    return true
 end
 
 local function findPromptRecursive(instance)
-	local prompt = instance:FindFirstChildOfClass("ProximityPrompt")
-	if prompt then return prompt end
-	for _, descendant in ipairs(instance:GetDescendants()) do
-		if descendant:IsA("ProximityPrompt") then
-			return descendant
-		end
-	end
-	return nil
+    local prompt = instance:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then return prompt end
+    for _, descendant in ipairs(instance:GetDescendants()) do
+        if descendant:IsA("ProximityPrompt") then
+            return descendant
+        end
+    end
+    return nil
 end
 
 local function getPlayerRole(player)
-	local team = player.Team
-	if team then
-		local teamName = string.lower(team.Name)
-		if string.find(teamName, "killer") or string.find(teamName, "murderer") then return "Killer" end
-		if string.find(teamName, "survivor") or string.find(teamName, "innocent") then return "Survivor" end
-	end
-	local roleAttr = player:GetAttribute("Role") or player:GetAttribute("IsKiller")
-	if roleAttr == true or roleAttr == "Killer" then return "Killer" end
-	if roleAttr == false or roleAttr == "Survivor" then return "Survivor" end
-	local char = player.Character
-	if char then
-		local charAttr = char:GetAttribute("Role") or char:GetAttribute("IsKiller")
-		if charAttr == true or charAttr == "Killer" then return "Killer" end
-		local humanoid = char:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			local humAttr = humanoid:GetAttribute("IsKiller")
-			if humAttr then return "Killer" end
-		end
-		local tool = char:FindFirstChildOfClass("Tool")
-		if tool then
-			local toolName = string.lower(tool.Name)
-			if string.find(toolName, "knife") or string.find(toolName, "weapon")
-				or string.find(toolName, "sword") or string.find(toolName, "blade")
-				or string.find(toolName, "cleaver") or string.find(toolName, "axe") then
-				return "Killer"
-			end
-		end
-	end
-	return "Survivor"
+    local team = player.Team
+    if team then
+        local teamName = string.lower(team.Name)
+        if string.find(teamName, "killer") or string.find(teamName, "murderer") then return "Killer" end
+        if string.find(teamName, "survivor") or string.find(teamName, "innocent") then return "Survivor" end
+    end
+    local roleAttr = player:GetAttribute("Role") or player:GetAttribute("IsKiller")
+    if roleAttr == true or roleAttr == "Killer" then return "Killer" end
+    if roleAttr == false or roleAttr == "Survivor" then return "Survivor" end
+    local char = player.Character
+    if char then
+        local charAttr = char:GetAttribute("Role") or char:GetAttribute("IsKiller")
+        if charAttr == true or charAttr == "Killer" then return "Killer" end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            local humAttr = humanoid:GetAttribute("IsKiller")
+            if humAttr then return "Killer" end
+        end
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            local toolName = string.lower(tool.Name)
+            if string.find(toolName, "knife") or string.find(toolName, "weapon")
+                or string.find(toolName, "sword") or string.find(toolName, "blade")
+                or string.find(toolName, "cleaver") or string.find(toolName, "axe") then
+                return "Killer"
+            end
+        end
+    end
+    return "Survivor"
 end
 
 function getKiller()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player == LocalPlayer then continue end
-		if getPlayerRole(player) == "Killer" then
-			local char = player.Character
-			if char then
-				local root = char:FindFirstChild("HumanoidRootPart")
-				if root then return char, root end
-			end
-		end
-	end
-	return nil, nil
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        if getPlayerRole(player) == "Killer" then
+            local char = player.Character
+            if char then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then return char, root end
+            end
+        end
+    end
+    return nil, nil
 end
 
 local function isLockerOccupied(locker)
-	if not locker or not locker.Parent then return false end
-	if locker.Transparency and locker.Transparency >= 0.95 then return false end
+    if not locker or not locker.Parent then return false end
+    if locker.Transparency and locker.Transparency >= 0.95 then return false end
 
-	for _, descendant in ipairs(locker:GetDescendants()) do
-		if descendant:IsA("Sound") then
-			if descendant.Name == "LockerOpen" and descendant.IsPlaying then
-				return true
-			end
-		end
-	end
+    for _, descendant in ipairs(locker:GetDescendants()) do
+        if descendant:IsA("Sound") then
+            if descendant.Name == "LockerOpen" and descendant.IsPlaying then
+                return true
+            end
+        end
+    end
 
-	local lockerPos = locker.Position
-	if not lockerPos then return false end
+    local lockerPos = locker.Position
+    if not lockerPos then return false end
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player == LocalPlayer then continue end
-		local char = player.Character
-		if not char then continue end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
 
-		local humanoid = char:FindFirstChildOfClass("Humanoid")
-		if not humanoid or humanoid.Health <= 0 then continue end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then continue end
 
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if not root then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
 
-		local playerPos = root.Position
-		if not playerPos then continue end
-		if playerPos.X ~= playerPos.X or playerPos.Y ~= playerPos.Y or playerPos.Z ~= playerPos.Z then
-			continue
-		end
+        local playerPos = root.Position
+        if not playerPos then continue end
+        if playerPos.X ~= playerPos.X or playerPos.Y ~= playerPos.Y or playerPos.Z ~= playerPos.Z then
+            continue
+        end
 
-		local distance = (playerPos - lockerPos).Magnitude
-		if distance < LockerESP.CheckRadius then
-			return true
-		end
-	end
+        local distance = (playerPos - lockerPos).Magnitude
+        if distance < LockerESP.CheckRadius then
+            return true
+        end
+    end
 
-	return false
+    return false
 end
 
 local function createLockerESP(locker)
-	if activeLockerESP[locker] then return end
+    if activeLockerESP[locker] then return end
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "LockerESP_Highlight"
-	highlight.Adornee = locker
-	highlight.FillColor = LockerESP.EmptyColor
-	highlight.OutlineColor = LockerESP.EmptyColor
-	highlight.FillTransparency = 0.7
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Parent = locker
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "LockerESP_Highlight"
+    highlight.Adornee = locker
+    highlight.FillColor = LockerESP.EmptyColor
+    highlight.OutlineColor = LockerESP.EmptyColor
+    highlight.FillTransparency = 0.7
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = locker
 
-	activeLockerESP[locker] = {
-		highlight = highlight,
-	}
+    activeLockerESP[locker] = { highlight = highlight }
 end
 
 local function removeLockerESP(locker)
-	local data = activeLockerESP[locker]
-	if not data then return end
-	if data.highlight then data.highlight:Destroy() end
-	activeLockerESP[locker] = nil
+    local data = activeLockerESP[locker]
+    if not data then return end
+    if data.highlight then data.highlight:Destroy() end
+    activeLockerESP[locker] = nil
 end
 
 local function clearAllLockerESP()
-	for locker, _ in pairs(activeLockerESP) do removeLockerESP(locker) end
+    for locker, _ in pairs(activeLockerESP) do removeLockerESP(locker) end
 end
 
 local function scanForLockers()
-	if unloaded then return end
-	if not LockerESP.Enabled then return end
+    if unloaded then return end
+    if not LockerESP.Enabled then return end
 
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if not descendant.Parent then continue end
-		if not descendant:IsA("BasePart") then continue end
-		if isInLobby(descendant) then continue end
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if not descendant.Parent then continue end
+        if not descendant:IsA("BasePart") then continue end
+        if isInLobby(descendant) then continue end
 
-		local isLockerPart = false
-		local check = descendant
-		while check do
-			if check.Name == "Lockers" then
-				isLockerPart = true
-				break
-			end
-			if check == workspace then break end
-			check = check.Parent
-		end
+        local isLockerPart = false
+        local check = descendant
+        while check do
+            if check.Name == "Lockers" then
+                isLockerPart = true
+                break
+            end
+            if check == workspace then break end
+            check = check.Parent
+        end
 
-		if isLockerPart then
-			if not activeLockerESP[descendant] then
-				createLockerESP(descendant)
-			end
-		end
-	end
+        if isLockerPart then
+            if not activeLockerESP[descendant] then
+                createLockerESP(descendant)
+            end
+        end
+    end
 end
 
 local function updateLockerESP()
-	if not LockerESP.Enabled then return end
-	local char = LocalPlayer.Character
-	if not char then return end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	local playerPos = root.Position
+    if not LockerESP.Enabled then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local playerPos = root.Position
 
-	for locker, data in pairs(activeLockerESP) do
-		if not locker or not locker.Parent then
-			removeLockerESP(locker)
-			continue
-		end
+    for locker, data in pairs(activeLockerESP) do
+        if not locker or not locker.Parent then
+            removeLockerESP(locker)
+            continue
+        end
 
-		local distance = (playerPos - locker.Position).Magnitude
-		local visible = distance <= LockerESP.MaxDistance
+        local distance = (playerPos - locker.Position).Magnitude
+        local visible = distance <= LockerESP.MaxDistance
 
-		if data.highlight then data.highlight.Enabled = visible end
+        if data.highlight then data.highlight.Enabled = visible end
 
-		if visible then
-			local occupied = isLockerOccupied(locker)
-
-			if occupied then
-				data.highlight.FillColor = LockerESP.OccupiedColor
-				data.highlight.OutlineColor = LockerESP.OccupiedColor
-			else
-				data.highlight.FillColor = LockerESP.EmptyColor
-				data.highlight.OutlineColor = LockerESP.EmptyColor
-			end
-		end
-	end
+        if visible then
+            local occupied = isLockerOccupied(locker)
+            if occupied then
+                data.highlight.FillColor = LockerESP.OccupiedColor
+                data.highlight.OutlineColor = LockerESP.OccupiedColor
+            else
+                data.highlight.FillColor = LockerESP.EmptyColor
+                data.highlight.OutlineColor = LockerESP.EmptyColor
+            end
+        end
+    end
 end
 
 local function createPlayerESP(player)
-	if player == LocalPlayer then return end
-	if activePlayerESP[player] then return end
+    if player == LocalPlayer then return end
+    if activePlayerESP[player] then return end
 
-	local char = player.Character
-	if not char then return end
-	local head = char:FindFirstChild("Head")
-	if not head then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
 
-	local role = getPlayerRole(player)
-	local color = (role == "Killer") and PlayerESP.KillerColor or PlayerESP.SurvivorColor
+    local role = getPlayerRole(player)
+    local color = (role == "Killer") and PlayerESP.KillerColor or PlayerESP.SurvivorColor
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "PlayerESP_Highlight"
-	highlight.Adornee = char
-	highlight.FillColor = color
-	highlight.OutlineColor = color
-	highlight.FillTransparency = 0.5
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = PlayerESP.SeeThroughWalls and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
-	highlight.Parent = char
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "PlayerESP_Highlight"
+    highlight.Adornee = char
+    highlight.FillColor = color
+    highlight.OutlineColor = color
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = PlayerESP.SeeThroughWalls and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+    highlight.Parent = char
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "PlayerESP_Billboard"
-	billboard.Size = UDim2.new(0, 160, 0, 44)
-	billboard.StudsOffset = Vector3.new(0, 3, 0)
-	billboard.Adornee = head
-	billboard.AlwaysOnTop = PlayerESP.SeeThroughWalls
-	billboard.MaxDistance = PlayerESP.MaxDistance
-	billboard.Parent = head
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "PlayerESP_Billboard"
+    billboard.Size = UDim2.new(0, 160, 0, 44)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Adornee = head
+    billboard.AlwaysOnTop = PlayerESP.SeeThroughWalls
+    billboard.MaxDistance = PlayerESP.MaxDistance
+    billboard.Parent = head
 
-	local bg = Instance.new("Frame")
-	bg.Name = "BG"
-	bg.Size = UDim2.new(1, 0, 1, 0)
-	bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	bg.BackgroundTransparency = 0.3
-	bg.BorderSizePixel = 0
-	bg.Parent = billboard
+    local bg = Instance.new("Frame")
+    bg.Name = "BG"
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    bg.BackgroundTransparency = 0.3
+    bg.BorderSizePixel = 0
+    bg.Parent = billboard
 
-	local corner2 = Instance.new("UICorner")
-	corner2.CornerRadius = UDim.new(0, 4)
-	corner2.Parent = bg
+    local corner2 = Instance.new("UICorner")
+    corner2.CornerRadius = UDim.new(0, 4)
+    corner2.Parent = bg
 
-	local stroke2 = Instance.new("UIStroke")
-	stroke2.Color = color
-	stroke2.Thickness = 1
-	stroke2.Parent = bg
+    local stroke2 = Instance.new("UIStroke")
+    stroke2.Color = color
+    stroke2.Thickness = 1
+    stroke2.Parent = bg
 
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Name = "NameLabel"
-	nameLabel.Size = UDim2.new(1, -4, 0, 20)
-	nameLabel.Position = UDim2.new(0, 2, 0, 2)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text = player.Name
-	nameLabel.TextColor3 = color
-	nameLabel.TextScaled = true
-	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
-	nameLabel.Visible = PlayerESP.ShowName
-	nameLabel.Parent = bg
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "NameLabel"
+    nameLabel.Size = UDim2.new(1, -4, 0, 20)
+    nameLabel.Position = UDim2.new(0, 2, 0, 2)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = color
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+    nameLabel.Visible = PlayerESP.ShowName
+    nameLabel.Parent = bg
 
-	local roleLabel = Instance.new("TextLabel")
-	roleLabel.Name = "RoleLabel"
-	roleLabel.Size = UDim2.new(1, -4, 0, 12)
-	roleLabel.Position = UDim2.new(0, 2, 0, 22)
-	roleLabel.BackgroundTransparency = 1
-	roleLabel.Text = "[" .. role .. "]"
-	roleLabel.TextColor3 = color
-	roleLabel.TextScaled = true
-	roleLabel.Font = Enum.Font.Gotham
-	roleLabel.TextXAlignment = Enum.TextXAlignment.Center
-	roleLabel.Parent = bg
+    local roleLabel = Instance.new("TextLabel")
+    roleLabel.Name = "RoleLabel"
+    roleLabel.Size = UDim2.new(1, -4, 0, 12)
+    roleLabel.Position = UDim2.new(0, 2, 0, 22)
+    roleLabel.BackgroundTransparency = 1
+    roleLabel.Text = "[" .. role .. "]"
+    roleLabel.TextColor3 = color
+    roleLabel.TextScaled = true
+    roleLabel.Font = Enum.Font.Gotham
+    roleLabel.TextXAlignment = Enum.TextXAlignment.Center
+    roleLabel.Parent = bg
 
-	local distLabel = Instance.new("TextLabel")
-	distLabel.Name = "DistanceLabel"
-	distLabel.Size = UDim2.new(1, -4, 0, 12)
-	distLabel.Position = UDim2.new(0, 2, 0, 34)
-	distLabel.BackgroundTransparency = 1
-	distLabel.Text = "0 m"
-	distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-	distLabel.TextScaled = true
-	distLabel.Font = Enum.Font.Gotham
-	distLabel.TextXAlignment = Enum.TextXAlignment.Center
-	distLabel.Visible = PlayerESP.ShowDistance
-	distLabel.Parent = bg
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Name = "DistanceLabel"
+    distLabel.Size = UDim2.new(1, -4, 0, 12)
+    distLabel.Position = UDim2.new(0, 2, 0, 34)
+    distLabel.BackgroundTransparency = 1
+    distLabel.Text = "0 m"
+    distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    distLabel.TextScaled = true
+    distLabel.Font = Enum.Font.Gotham
+    distLabel.TextXAlignment = Enum.TextXAlignment.Center
+    distLabel.Visible = PlayerESP.ShowDistance
+    distLabel.Parent = bg
 
-	activePlayerESP[player] = {
-		highlight = highlight, billboard = billboard,
-		nameLabel = nameLabel, roleLabel = roleLabel,
-		distLabel = distLabel, stroke = stroke2,
-		role = role, char = char,
-	}
+    activePlayerESP[player] = {
+        highlight = highlight, billboard = billboard,
+        nameLabel = nameLabel, roleLabel = roleLabel,
+        distLabel = distLabel, stroke = stroke2,
+        role = role, char = char,
+    }
 end
 
 local function removePlayerESP(player)
-	local data = activePlayerESP[player]
-	if not data then return end
-	if data.highlight then data.highlight:Destroy() end
-	if data.billboard then data.billboard:Destroy() end
-	activePlayerESP[player] = nil
+    local data = activePlayerESP[player]
+    if not data then return end
+    if data.highlight then data.highlight:Destroy() end
+    if data.billboard then data.billboard:Destroy() end
+    activePlayerESP[player] = nil
 end
 
 local function clearAllPlayerESP()
-	for player, _ in pairs(activePlayerESP) do removePlayerESP(player) end
+    for player, _ in pairs(activePlayerESP) do removePlayerESP(player) end
 end
 
 local function refreshPlayerStyles()
-	for _, data in pairs(activePlayerESP) do
-		local color = (data.role == "Killer") and PlayerESP.KillerColor or PlayerESP.SurvivorColor
-		if data.highlight then
-			data.highlight.FillColor = color
-			data.highlight.OutlineColor = color
-			data.highlight.DepthMode = PlayerESP.SeeThroughWalls and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
-		end
-		if data.stroke then data.stroke.Color = color end
-		if data.nameLabel then
-			data.nameLabel.TextColor3 = color
-			data.nameLabel.Visible = PlayerESP.ShowName
-		end
-		if data.roleLabel then data.roleLabel.TextColor3 = color end
-		if data.distLabel then data.distLabel.Visible = PlayerESP.ShowDistance end
-		if data.billboard then
-			data.billboard.MaxDistance = PlayerESP.MaxDistance
-			data.billboard.AlwaysOnTop = PlayerESP.SeeThroughWalls
-		end
-	end
+    for _, data in pairs(activePlayerESP) do
+        local color = (data.role == "Killer") and PlayerESP.KillerColor or PlayerESP.SurvivorColor
+        if data.highlight then
+            data.highlight.FillColor = color
+            data.highlight.OutlineColor = color
+            data.highlight.DepthMode = PlayerESP.SeeThroughWalls and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        end
+        if data.stroke then data.stroke.Color = color end
+        if data.nameLabel then
+            data.nameLabel.TextColor3 = color
+            data.nameLabel.Visible = PlayerESP.ShowName
+        end
+        if data.roleLabel then data.roleLabel.TextColor3 = color end
+        if data.distLabel then data.distLabel.Visible = PlayerESP.ShowDistance end
+        if data.billboard then
+            data.billboard.MaxDistance = PlayerESP.MaxDistance
+            data.billboard.AlwaysOnTop = PlayerESP.SeeThroughWalls
+        end
+    end
 end
 
 local function updatePlayerESP()
-	if not PlayerESP.Enabled then return end
-	local char = LocalPlayer.Character
-	if not char then return end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	local playerPos = root.Position
+    if not PlayerESP.Enabled then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local playerPos = root.Position
 
-	for player, data in pairs(activePlayerESP) do
-		if not player or not player.Parent then removePlayerESP(player) continue end
-		if not data.char or not data.char.Parent then removePlayerESP(player) continue end
+    for player, data in pairs(activePlayerESP) do
+        if not player or not player.Parent then removePlayerESP(player) continue end
+        if not data.char or not data.char.Parent then removePlayerESP(player) continue end
 
-		local pRoot = data.char:FindFirstChild("HumanoidRootPart")
-		if not pRoot then removePlayerESP(player) continue end
+        local pRoot = data.char:FindFirstChild("HumanoidRootPart")
+        if not pRoot then removePlayerESP(player) continue end
 
-		local distance = (playerPos - pRoot.Position).Magnitude
-		local visible = PlayerESP.Enabled and distance <= PlayerESP.MaxDistance
+        local distance = (playerPos - pRoot.Position).Magnitude
+        local visible = PlayerESP.Enabled and distance <= PlayerESP.MaxDistance
 
-		if data.highlight then data.highlight.Enabled = visible end
-		if data.billboard then data.billboard.Enabled = visible end
+        if data.highlight then data.highlight.Enabled = visible end
+        if data.billboard then data.billboard.Enabled = visible end
 
-		local newRole = getPlayerRole(player)
-		if newRole ~= data.role then
-			data.role = newRole
-			local newColor = (newRole == "Killer") and PlayerESP.KillerColor or PlayerESP.SurvivorColor
-			if data.highlight then
-				data.highlight.FillColor = newColor
-				data.highlight.OutlineColor = newColor
-			end
-			if data.stroke then data.stroke.Color = newColor end
-			if data.nameLabel then data.nameLabel.TextColor3 = newColor end
-			if data.roleLabel then
-				data.roleLabel.Text = "[" .. newRole .. "]"
-				data.roleLabel.TextColor3 = newColor
-			end
-		end
+        local newRole = getPlayerRole(player)
+        if newRole ~= data.role then
+            data.role = newRole
+            local newColor = (newRole == "Killer") and PlayerESP.KillerColor or PlayerESP.SurvivorColor
+            if data.highlight then
+                data.highlight.FillColor = newColor
+                data.highlight.OutlineColor = newColor
+            end
+            if data.stroke then data.stroke.Color = newColor end
+            if data.nameLabel then data.nameLabel.TextColor3 = newColor end
+            if data.roleLabel then
+                data.roleLabel.Text = "[" .. newRole .. "]"
+                data.roleLabel.TextColor3 = newColor
+            end
+        end
 
-		if data.distLabel then
-			data.distLabel.Text = string.format("%d studs", math.floor(distance))
-		end
-	end
+        if data.distLabel then
+            data.distLabel.Text = string.format("%d studs", math.floor(distance))
+        end
+    end
 end
 
 local function scanAllSpawnPoints()
-	if unloaded then return end
+    if unloaded then return end
 
-	local newList = {}
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if not descendant.Parent then continue end
-		if descendant.Name == "LootSpawns" or descendant.Name == "Collectables" then
-			for _, item in ipairs(descendant:GetChildren()) do
-				if not item.Parent then continue end
-				if item.Parent ~= descendant then continue end
-				if not item:IsA("BasePart") then continue end
-				if isPlayerCharacter(item) then continue end
-				if not isLootStillValid(item) then continue end
+    local newList = {}
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if not descendant.Parent then continue end
+        if descendant.Name == "LootSpawns" or descendant.Name == "Collectables" then
+            for _, item in ipairs(descendant:GetChildren()) do
+                if not item.Parent then continue end
+                if item.Parent ~= descendant then continue end
+                if not item:IsA("BasePart") then continue end
+                if isPlayerCharacter(item) then continue end
+                if not isLootStillValid(item) then continue end
+                table.insert(newList, item)
+            end
+        end
+    end
 
-				table.insert(newList, item)
-			end
-		end
-	end
-
-	farmSpawnPoints = newList
+    farmSpawnPoints = newList
 end
 
 local function farmTeleportToSpawnPoint(point)
-	if not point or not point.Parent then return false end
-	local char = LocalPlayer.Character
-	if not char then return false end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return false end
+    if not point or not point.Parent then return false end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
 
-	local oldPos = root.Position
-	local targetPos = point.Position + Vector3.new(0, 3, 0)
-	root.CFrame = CFrame.new(targetPos)
+    local oldPos = root.Position
+    local targetPos = point.Position + Vector3.new(0, 3, 0)
+    root.CFrame = CFrame.new(targetPos)
 
-	task.wait(0.15)
+    task.wait(0.15)
 
-	local newPos = root.Position
-	if (newPos - oldPos).Magnitude < 5 then
-		root.CFrame = CFrame.new(targetPos + Vector3.new(0, 5, 0))
-		task.wait(0.1)
-		return false
-	end
+    local newPos = root.Position
+    if (newPos - oldPos).Magnitude < 5 then
+        root.CFrame = CFrame.new(targetPos + Vector3.new(0, 5, 0))
+        task.wait(0.1)
+        return false
+    end
 
-	local prompt = findPromptRecursive(point)
-	if not prompt then
-		local parent = point.Parent
-		if parent then
-			prompt = findPromptRecursive(parent)
-		end
-	end
+    local prompt = findPromptRecursive(point)
+    if not prompt then
+        local parent = point.Parent
+        if parent then
+            prompt = findPromptRecursive(parent)
+        end
+    end
 
-	if prompt then
-		pcall(function()
-			prompt.HoldDuration = 0
-			prompt.RequiresLineOfSight = false
-		end)
-		pcall(function()
-			fireproximityprompt(prompt)
-		end)
-		task.wait(0.15)
-	end
+    if prompt then
+        pcall(function()
+            prompt.HoldDuration = 0
+            prompt.RequiresLineOfSight = false
+        end)
+        pcall(function()
+            fireproximityprompt(prompt)
+        end)
+        task.wait(0.15)
+    end
 
-	return true
+    return true
 end
 
 local function farmTweenToSpawnPoint(point)
-	if not point or not point.Parent then return false end
-	local char = LocalPlayer.Character
-	if not char then return false end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return false end
+    if not point or not point.Parent then return false end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
 
-	local targetPos = point.Position + Vector3.new(0, 3, 0)
-	local distance = (root.Position - targetPos).Magnitude
-	local duration = distance / (AutoFarm.TweenSpeed * 100)
+    local targetPos = point.Position + Vector3.new(0, 3, 0)
+    local distance = (root.Position - targetPos).Magnitude
+    local duration = distance / (AutoFarm.TweenSpeed * 100)
 
-	if activeTween then
-		activeTween:Cancel()
-		activeTween = nil
-	end
+    if activeTween then
+        activeTween:Cancel()
+        activeTween = nil
+    end
 
-	local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-	local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
-	activeTween = tween
-	tween:Play()
-	tween.Completed:Wait()
-	activeTween = nil
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
+    activeTween = tween
+    tween:Play()
+    tween.Completed:Wait()
+    activeTween = nil
 
-	task.wait(0.05)
+    task.wait(0.05)
 
-	local prompt = findPromptRecursive(point)
-	if not prompt then
-		local parent = point.Parent
-		if parent then
-			prompt = findPromptRecursive(parent)
-		end
-	end
+    local prompt = findPromptRecursive(point)
+    if not prompt then
+        local parent = point.Parent
+        if parent then
+            prompt = findPromptRecursive(parent)
+        end
+    end
 
-	if prompt then
-		pcall(function()
-			prompt.HoldDuration = 0
-			prompt.RequiresLineOfSight = false
-		end)
-		pcall(function()
-			fireproximityprompt(prompt)
-		end)
-		task.wait(0.1)
-	end
+    if prompt then
+        pcall(function()
+            prompt.HoldDuration = 0
+            prompt.RequiresLineOfSight = false
+        end)
+        pcall(function()
+            fireproximityprompt(prompt)
+        end)
+        task.wait(0.1)
+    end
 
-	return true
+    return true
 end
 
 function killAllPlayers()
-	local char = LocalPlayer.Character
-	if not char then return 0 end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return 0 end
+    local char = LocalPlayer.Character
+    if not char then return 0 end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return 0 end
 
-	local myPos = root.Position
-	local count = 0
+    local myPos = root.Position
+    local count = 0
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player == LocalPlayer then continue end
-		local pChar = player.Character
-		if not pChar then continue end
-		local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-		if not pRoot then continue end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local pChar = player.Character
+        if not pChar then continue end
+        local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+        if not pRoot then continue end
 
-		pRoot.CFrame = CFrame.new(myPos + Vector3.new(math.random(-5, 5), 2, math.random(-5, 5)))
-		count = count + 1
-	end
+        pRoot.CFrame = CFrame.new(myPos + Vector3.new(math.random(-5, 5), 2, math.random(-5, 5)))
+        count = count + 1
+    end
 
-	return count
+    return count
 end
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(KillAllConfig.Interval)
-		if KillAllConfig.Enabled then
-			killAllPlayers()
-		end
-	end
+    while not unloaded do
+        task.wait(KillAllConfig.Interval)
+        if KillAllConfig.Enabled then
+            killAllPlayers()
+        end
+    end
 end)
 
 function teleportToPlayer(player)
-	if not player then return false end
-	local pChar = player.Character
-	if not pChar then return false end
-	local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-	if not pRoot then return false end
+    if not player then return false end
+    local pChar = player.Character
+    if not pChar then return false end
+    local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+    if not pRoot then return false end
 
-	local char = LocalPlayer.Character
-	if not char then return false end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return false end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
 
-	root.CFrame = CFrame.new(pRoot.Position + Vector3.new(0, 3, 0))
-	return true
+    root.CFrame = CFrame.new(pRoot.Position + Vector3.new(0, 3, 0))
+    return true
 end
 
 local function teleportToNearestPlayer()
-	local char = LocalPlayer.Character
-	if not char then return nil end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return nil end
-	local playerPos = root.Position
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local playerPos = root.Position
 
-	local nearest = nil
-	local nearestDist = math.huge
+    local nearest = nil
+    local nearestDist = math.huge
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player == LocalPlayer then continue end
-		local pChar = player.Character
-		if not pChar then continue end
-		local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-		if not pRoot then continue end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local pChar = player.Character
+        if not pChar then continue end
+        local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+        if not pRoot then continue end
 
-		local dist = (playerPos - pRoot.Position).Magnitude
-		if dist < nearestDist then
-			nearestDist = dist
-			nearest = player
-		end
-	end
+        local dist = (playerPos - pRoot.Position).Magnitude
+        if dist < nearestDist then
+            nearestDist = dist
+            nearest = player
+        end
+    end
 
-	if nearest then
-		teleportToPlayer(nearest)
-		return nearest
-	end
-	return nil
+    if nearest then
+        teleportToPlayer(nearest)
+        return nearest
+    end
+    return nil
 end
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(AutoFarm.Delay)
+    while not unloaded do
+        task.wait(AutoFarm.Delay)
 
-		if AutoFarm.Enabled then
-			local char = LocalPlayer.Character
-			if not char then
-				task.wait(1)
-				continue
-			end
+        if AutoFarm.Enabled then
+            local char = LocalPlayer.Character
+            if not char then task.wait(1) continue end
 
-			local humanoid = char:FindFirstChildOfClass("Humanoid")
-			if not humanoid or humanoid.Health <= 0 then
-				task.wait(1)
-				continue
-			end
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then task.wait(1) continue end
 
-			local root = char:FindFirstChild("HumanoidRootPart")
-			if not root then
-				task.wait(1)
-				continue
-			end
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then task.wait(1) continue end
 
-			local inLobbyZone = false
-			local check = char
-			while check do
-				if check.Name == "_Lobby" then
-					inLobbyZone = true
-					break
-				end
-				if check == workspace then break end
-				check = check.Parent
-			end
+            local inLobbyZone = false
+            local check = char
+            while check do
+                if check.Name == "_Lobby" then
+                    inLobbyZone = true
+                    break
+                end
+                if check == workspace then break end
+                check = check.Parent
+            end
 
-			if inLobbyZone or isInLobbyTeam() then
-				lastInLobby = true
-				spawnStartTime = nil
-				task.wait(1)
-				continue
-			end
+            if inLobbyZone or isInLobbyTeam() then
+                lastInLobby = true
+                spawnStartTime = nil
+                task.wait(1)
+                continue
+            end
 
-			if lastInLobby and not inLobbyZone then
-				lastInLobby = false
-				spawnStartTime = tick()
-			end
+            if lastInLobby and not inLobbyZone then
+                lastInLobby = false
+                spawnStartTime = tick()
+            end
 
-			if spawnStartTime then
-				local elapsed = tick() - spawnStartTime
-				if elapsed < AutoFarm.SpawnWait then
-					task.wait(0.5)
-					continue
-				end
-			end
+            if spawnStartTime then
+                local elapsed = tick() - spawnStartTime
+                if elapsed < AutoFarm.SpawnWait then
+                    task.wait(0.5)
+                    continue
+                end
+            end
 
-			local killerChar, killerRoot = getKiller()
-			if not killerChar then
-				task.wait(1)
-				continue
-			end
+            local killerChar, killerRoot = getKiller()
+            if not killerChar then task.wait(1) continue end
 
-			if AntiKiller.Enabled then
-				if (root.Position - killerRoot.Position).Magnitude < AntiKiller.SafeDistance then
-					continue
-				end
-			end
+            if AntiKiller.Enabled then
+                if (root.Position - killerRoot.Position).Magnitude < AntiKiller.SafeDistance then
+                    continue
+                end
+            end
 
-			if #farmSpawnPoints == 0 then
-				scanAllSpawnPoints()
-				currentSpawnIndex = 1
-				task.wait(0.3)
-				continue
-			end
+            if #farmSpawnPoints == 0 then
+                scanAllSpawnPoints()
+                currentSpawnIndex = 1
+                task.wait(0.3)
+                continue
+            end
 
-			local point = farmSpawnPoints[currentSpawnIndex]
-			if point and point.Parent then
-				if AutoFarm.Mode == "Teleport" then
-					farmTeleportToSpawnPoint(point)
-				else
-					farmTweenToSpawnPoint(point)
-				end
-			end
+            local point = farmSpawnPoints[currentSpawnIndex]
+            if point and point.Parent then
+                if AutoFarm.Mode == "Teleport" then
+                    farmTeleportToSpawnPoint(point)
+                else
+                    farmTweenToSpawnPoint(point)
+                end
+            end
 
-			currentSpawnIndex = currentSpawnIndex + 1
-			if currentSpawnIndex > #farmSpawnPoints then
-				currentSpawnIndex = 1
-				farmCycle = farmCycle + 1
-				scanAllSpawnPoints()
-			end
-		end
-	end
+            currentSpawnIndex = currentSpawnIndex + 1
+            if currentSpawnIndex > #farmSpawnPoints then
+                currentSpawnIndex = 1
+                farmCycle = farmCycle + 1
+                scanAllSpawnPoints()
+            end
+        end
+    end
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(1.5)
-		if AutoFarm.Enabled then
-			scanAllSpawnPoints()
-		end
-	end
+    while not unloaded do
+        task.wait(1.5)
+        if AutoFarm.Enabled then
+            scanAllSpawnPoints()
+        end
+    end
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(0.5)
-		scanAllSpawnPoints()
-	end
+    while not unloaded do
+        task.wait(0.5)
+        scanAllSpawnPoints()
+    end
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(AntiKiller.CheckInterval)
-		if not AntiKiller.Enabled then continue end
+    while not unloaded do
+        task.wait(AntiKiller.CheckInterval)
+        if not AntiKiller.Enabled then continue end
 
-		local killerChar, killerRoot = getKiller()
-		if not killerChar or not killerRoot then continue end
+        local killerChar, killerRoot = getKiller()
+        if not killerChar or not killerRoot then continue end
 
-		local char = LocalPlayer.Character
-		if not char then continue end
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if not root then continue end
+        local char = LocalPlayer.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
 
-		local killerPos = killerRoot.Position
-		local playerPos = root.Position
-		local distance = (playerPos - killerPos).Magnitude
+        local killerPos = killerRoot.Position
+        local playerPos = root.Position
+        local distance = (playerPos - killerPos).Magnitude
 
-		if distance < AntiKiller.SafeDistance then
-			local bestSpawn = nil
-			local bestDistance = -math.huge
-			
-			for _, item in ipairs(farmSpawnPoints) do
-				if not isLootStillValid(item) then continue end
-				local distToKiller = (item.Position - killerPos).Magnitude
-				local distToPlayer = (item.Position - playerPos).Magnitude
-				
-				if distToKiller > AntiKiller.SafeDistance * 1.5 and distToPlayer < 800 then
-					if distToKiller > bestDistance then
-						bestDistance = distToKiller
-						bestSpawn = item
-					end
-				end
-			end
-			
-			if bestSpawn then
-				root.CFrame = CFrame.new(bestSpawn.Position + Vector3.new(0, 3, 0))
-			else
-				local direction = (playerPos - killerPos)
-				if direction.Magnitude < 0.01 then
-					direction = Vector3.new(math.random(-1, 1), 0, math.random(-1, 1))
-				end
-				direction = direction.Unit
-				
-				local targetPos = killerPos + direction * (AntiKiller.SafeDistance * 2)
-				targetPos = Vector3.new(
-					math.clamp(targetPos.X, -2000, 2000),
-					math.clamp(targetPos.Y, 5, 500),
-					math.clamp(targetPos.Z, -2000, 2000)
-				)
-				
-				root.CFrame = CFrame.new(targetPos)
-			end
-		end
-	end
+        if distance < AntiKiller.SafeDistance then
+            local bestSpawn = nil
+            local bestDistance = -math.huge
+
+            for _, item in ipairs(farmSpawnPoints) do
+                if not isLootStillValid(item) then continue end
+                local distToKiller = (item.Position - killerPos).Magnitude
+                local distToPlayer = (item.Position - playerPos).Magnitude
+
+                if distToKiller > AntiKiller.SafeDistance * 1.5 and distToPlayer < 800 then
+                    if distToKiller > bestDistance then
+                        bestDistance = distToKiller
+                        bestSpawn = item
+                    end
+                end
+            end
+
+            if bestSpawn then
+                root.CFrame = CFrame.new(bestSpawn.Position + Vector3.new(0, 3, 0))
+            else
+                local direction = (playerPos - killerPos)
+                if direction.Magnitude < 0.01 then
+                    direction = Vector3.new(math.random(-1, 1), 0, math.random(-1, 1))
+                end
+                direction = direction.Unit
+
+                local targetPos = killerPos + direction * (AntiKiller.SafeDistance * 2)
+                targetPos = Vector3.new(
+                    math.clamp(targetPos.X, -2000, 2000),
+                    math.clamp(targetPos.Y, 5, 500),
+                    math.clamp(targetPos.Z, -2000, 2000)
+                )
+
+                root.CFrame = CFrame.new(targetPos)
+            end
+        end
+    end
 end)
 
 local function findEscapeTarget()
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if not descendant.Parent then continue end
-		if not descendant:IsA("BasePart") then continue end
-		if isInLobby(descendant) then continue end
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if not descendant.Parent then continue end
+        if not descendant:IsA("BasePart") then continue end
+        if isInLobby(descendant) then continue end
 
-		local hasExits = false
-		local hasExitGateway = false
-		local hasTrigger = false
+        local hasExits = false
+        local hasExitGateway = false
+        local hasTrigger = false
 
-		local check = descendant
-		while check do
-			if check.Name == "Exits" then hasExits = true end
-			if check.Name == "ExitGateway" then hasExitGateway = true end
-			if check.Name == "Trigger" then hasTrigger = true end
-			if check == workspace then break end
-			check = check.Parent
-		end
+        local check = descendant
+        while check do
+            if check.Name == "Exits" then hasExits = true end
+            if check.Name == "ExitGateway" then hasExitGateway = true end
+            if check.Name == "Trigger" then hasTrigger = true end
+            if check == workspace then break end
+            check = check.Parent
+        end
 
-		if not (hasExits and hasExitGateway and hasTrigger) then continue end
+        if not (hasExits and hasExitGateway and hasTrigger) then continue end
 
-		local hasExitIcon = false
-		for _, child in ipairs(descendant:GetDescendants()) do
-			if child.Name == "ExitIcon" then
-				hasExitIcon = true
-				break
-			end
-		end
+        local hasExitIcon = false
+        for _, child in ipairs(descendant:GetDescendants()) do
+            if child.Name == "ExitIcon" then
+                hasExitIcon = true
+                break
+            end
+        end
 
-		local isVisible = descendant.Transparency < 0.9
-		local canEnter = not descendant.CanCollide
-		local hasPrompt = descendant:FindFirstChildOfClass("ProximityPrompt") ~= nil
+        local isVisible = descendant.Transparency < 0.9
+        local canEnter = not descendant.CanCollide
+        local hasPrompt = descendant:FindFirstChildOfClass("ProximityPrompt") ~= nil
 
-		if hasExitIcon or (isVisible and canEnter) or hasPrompt then
-			return descendant
-		end
-	end
-	return nil
+        if hasExitIcon or (isVisible and canEnter) or hasPrompt then
+            return descendant
+        end
+    end
+    return nil
 end
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(AutoEscape.CheckInterval)
-		if not AutoEscape.Enabled then continue end
-		if escaped then continue end
+    while not unloaded do
+        task.wait(AutoEscape.CheckInterval)
+        if not AutoEscape.Enabled then continue end
+        if escaped then continue end
 
-		local char = LocalPlayer.Character
-		if not char then continue end
-		
-		local humanoid = char:FindFirstChildOfClass("Humanoid")
-		if not humanoid or humanoid.Health <= 0 then continue end
-		
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if not root then continue end
-		
-		local inLobbyZone = false
-		local check = char
-		while check do
-			if check.Name == "_Lobby" then
-				inLobbyZone = true
-				break
-			end
-			if check == workspace then break end
-			check = check.Parent
-		end
-		
-		if inLobbyZone or isInLobbyTeam() then
-			escaped = false
-			task.wait(1)
-			continue
-		end
+        local char = LocalPlayer.Character
+        if not char then continue end
 
-		local escapePart = findEscapeTarget()
-		if not escapePart then continue end
-		
-		local distance = (root.Position - escapePart.Position).Magnitude
-		if distance < 10 then
-			escaped = true
-			Rayfield:Notify({
-				Title = "Auto Escape",
-				Content = "Ты сбежал! Телепорт отключён",
-				Duration = 3,
-			})
-			continue
-		end
-		
-		root.CFrame = CFrame.new(escapePart.Position + Vector3.new(0, 3, 0))
-	end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then continue end
+
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        local inLobbyZone = false
+        local check = char
+        while check do
+            if check.Name == "_Lobby" then
+                inLobbyZone = true
+                break
+            end
+            if check == workspace then break end
+            check = check.Parent
+        end
+
+        if inLobbyZone or isInLobbyTeam() then
+            escaped = false
+            task.wait(1)
+            continue
+        end
+
+        local escapePart = findEscapeTarget()
+        if not escapePart then continue end
+
+        local distance = (root.Position - escapePart.Position).Magnitude
+        if distance < 10 then
+            escaped = true
+            NeverloseInstance:Notify("Auto Escape", "Ты сбежал! Телепорт отключён", 3)
+            continue
+        end
+
+        root.CFrame = CFrame.new(escapePart.Position + Vector3.new(0, 3, 0))
+    end
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(2)
-		local char = LocalPlayer.Character
-		if not char then continue end
-		
-		local inLobbyZone = false
-		local check = char
-		while check do
-			if check.Name == "_Lobby" then
-				inLobbyZone = true
-				break
-			end
-			if check == workspace then break end
-			check = check.Parent
-		end
-		
-		if inLobbyZone or isInLobbyTeam() then
-			escaped = false
-		end
-	end
+    while not unloaded do
+        task.wait(2)
+        local char = LocalPlayer.Character
+        if not char then continue end
+
+        local inLobbyZone = false
+        local check = char
+        while check do
+            if check.Name == "_Lobby" then
+                inLobbyZone = true
+                break
+            end
+            if check == workspace then break end
+            check = check.Parent
+        end
+
+        if inLobbyZone or isInLobbyTeam() then
+            escaped = false
+        end
+    end
 end)
 
 RunService.Heartbeat:Connect(function()
-	updatePlayerESP()
-	updateLockerESP()
+    updatePlayerESP()
+    updateLockerESP()
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(1)
-		if PlayerESP.Enabled then
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= LocalPlayer then
-					createPlayerESP(player)
-				end
-			end
-		end
-	end
+    while not unloaded do
+        task.wait(1)
+        if PlayerESP.Enabled then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    createPlayerESP(player)
+                end
+            end
+        end
+    end
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(1)
-		if LockerESP.Enabled then
-			scanForLockers()
-		end
-	end
+    while not unloaded do
+        task.wait(1)
+        if LockerESP.Enabled then
+            scanForLockers()
+        end
+    end
 end)
 
 task.spawn(function()
-	while not unloaded do
-		task.wait(0.1)
-		local char = LocalPlayer.Character
-		if not char then continue end
-		local humanoid = char:FindFirstChild("Humanoid")
-		if not humanoid then continue end
-		if SpeedConfig.Enabled then
-			humanoid.WalkSpeed = SpeedConfig.Value
-		else
-			humanoid.WalkSpeed = 16
-		end
-	end
+    while not unloaded do
+        task.wait(0.1)
+        local char = LocalPlayer.Character
+        if not char then continue end
+        local humanoid = char:FindFirstChild("Humanoid")
+        if not humanoid then continue end
+        if SpeedConfig.Enabled then
+            humanoid.WalkSpeed = SpeedConfig.Value
+        else
+            humanoid.WalkSpeed = 16
+        end
+    end
 end)
 
 local function startAntiAfk()
-	if antiAfkConnection then return end
-	
-	antiAfkConnection = LocalPlayer.Idled:Connect(function()
-		local vu = game:GetService("VirtualUser")
-		vu:CaptureController()
-		vu:ClickButton2(Vector2.new())
-	end)
-	
-	Rayfield:Notify({
-		Title = "Anti AFK",
-		Content = "Anti AFK включён",
-		Duration = 3,
-	})
+    if antiAfkConnection then return end
+    antiAfkConnection = LocalPlayer.Idled:Connect(function()
+        local vu = game:GetService("VirtualUser")
+        vu:CaptureController()
+        vu:ClickButton2(Vector2.new())
+    end)
+    NeverloseInstance:Notify("Anti AFK", "Anti AFK включён", 3)
 end
 
 local function stopAntiAfk()
-	if antiAfkConnection then
-		antiAfkConnection:Disconnect()
-		antiAfkConnection = nil
-	end
-	
-	Rayfield:Notify({
-		Title = "Anti AFK",
-		Content = "Anti AFK выключен",
-		Duration = 3,
-	})
+    if antiAfkConnection then
+        antiAfkConnection:Disconnect()
+        antiAfkConnection = nil
+    end
+    NeverloseInstance:Notify("Anti AFK", "Anti AFK выключен", 3)
 end
 
-local Window = Rayfield:CreateWindow({
-	Name = "STK ESP + Auto Farm",
-	LoadingTitle = "Загрузка...",
-	LoadingSubtitle = "by you",
-	ConfigurationSaving = { Enabled = true, FolderName = "STKESP", FileName = "Config" },
-	KeySystem = false,
+-- ============================================================
+--  СОЗДАНИЕ UI
+-- ============================================================
+
+NeverloseInstance = Neverlose.new("Lynxora", "STK ESP + Auto Farm  |  K — toggle menu")
+
+-- ============ PLAYER ESP TAB ============
+local PlayerTab = NeverloseInstance:Tab("Player ESP")
+
+NeverloseInstance:Section(PlayerTab, "ESP")
+NeverloseInstance:Toggle_(PlayerTab, "Включить ESP игроков", true, function(v)
+    PlayerESP.Enabled = v
+    if not v then clearAllPlayerESP() end
+end)
+NeverloseInstance:Toggle_(PlayerTab, "Видеть сквозь стены", true, function(v)
+    PlayerESP.SeeThroughWalls = v
+    refreshPlayerStyles()
+end)
+NeverloseInstance:Slider(PlayerTab, "Макс. дистанция", 50, 2000, 1000, function(v)
+    PlayerESP.MaxDistance = v
+    refreshPlayerStyles()
+end)
+NeverloseInstance:Toggle_(PlayerTab, "Показывать имя", true, function(v)
+    PlayerESP.ShowName = v
+    refreshPlayerStyles()
+end)
+NeverloseInstance:Toggle_(PlayerTab, "Показывать расстояние", true, function(v)
+    PlayerESP.ShowDistance = v
+    refreshPlayerStyles()
+end)
+
+NeverloseInstance:Section(PlayerTab, "Цвета")
+NeverloseInstance:ColorPicker(PlayerTab, "Цвет убийцы", Color3.fromRGB(255, 50, 50), function(c)
+    PlayerESP.KillerColor = c
+    refreshPlayerStyles()
+end)
+NeverloseInstance:ColorPicker(PlayerTab, "Цвет выживших", Color3.fromRGB(0, 150, 255), function(c)
+    PlayerESP.SurvivorColor = c
+    refreshPlayerStyles()
+end)
+
+-- ============ LOCKER TAB ============
+local LockerTab = NeverloseInstance:Tab("Locker ESP")
+
+NeverloseInstance:Section(LockerTab, "Настройки")
+NeverloseInstance:Toggle_(LockerTab, "Включить ESP шкафов", true, function(v)
+    LockerESP.Enabled = v
+    if not v then clearAllLockerESP() end
+end)
+NeverloseInstance:Slider(LockerTab, "Макс. дистанция", 100, 5000, 2000, function(v)
+    LockerESP.MaxDistance = v
+end)
+NeverloseInstance:Slider(LockerTab, "Радиус проверки", 1, 15, 5, function(v)
+    LockerESP.CheckRadius = v
+end)
+
+NeverloseInstance:Section(LockerTab, "Цвета")
+NeverloseInstance:ColorPicker(LockerTab, "Пустой шкаф", Color3.fromRGB(0, 255, 100), function(c)
+    LockerESP.EmptyColor = c
+end)
+NeverloseInstance:ColorPicker(LockerTab, "Занятый шкаф", Color3.fromRGB(255, 0, 0), function(c)
+    LockerESP.OccupiedColor = c
+end)
+
+-- ============ FARM TAB ============
+local FarmTab = NeverloseInstance:Tab("Auto Farm")
+
+NeverloseInstance:Section(FarmTab, "Основное")
+NeverloseInstance:Toggle_(FarmTab, "Включить Auto Farm", false, function(v)
+    AutoFarm.Enabled = v
+    if v then
+        scanAllSpawnPoints()
+        currentSpawnIndex = 1
+    end
+end)
+NeverloseInstance:Slider(FarmTab, "Задержка (x0.05s)", 1, 40, 5, function(v)
+    AutoFarm.Delay = v * 0.05
+end)
+
+NeverloseInstance:Section(FarmTab, "Способ фарма")
+NeverloseInstance:Dropdown(FarmTab, "Режим", {"Teleport", "Tween (Fly)"}, "Teleport", function(opt)
+    AutoFarm.Mode = opt
+end)
+NeverloseInstance:Slider(FarmTab, "Скорость полёта (Tween)", 1, 50, 20, function(v)
+    AutoFarm.TweenSpeed = v
+end)
+
+-- ============ ANTI-KILLER TAB ============
+local AntiKillerTab = NeverloseInstance:Tab("Anti-Killer")
+
+NeverloseInstance:Section(AntiKillerTab, "Защита")
+NeverloseInstance:Toggle_(AntiKillerTab, "Включить Anti-Killer", false, function(v)
+    AntiKiller.Enabled = v
+end)
+NeverloseInstance:Slider(AntiKillerTab, "Безопасная дистанция", 50, 300, 150, function(v)
+    AntiKiller.SafeDistance = v
+end)
+NeverloseInstance:Button(AntiKillerTab, "Тест: найти убийцу", function()
+    local killerChar = getKiller()
+    if killerChar then
+        NeverloseInstance:Notify("Anti-Killer", "Убийца: " .. killerChar.Name, 3)
+    else
+        NeverloseInstance:Notify("Anti-Killer", "Убийца не найден", 3)
+    end
+end)
+
+-- ============ AUTO ESCAPE TAB ============
+local EscapeTab = NeverloseInstance:Tab("Auto Escape")
+
+NeverloseInstance:Section(EscapeTab, "Побег")
+NeverloseInstance:Toggle_(EscapeTab, "Включить Auto Escape", false, function(v)
+    AutoEscape.Enabled = v
+end)
+NeverloseInstance:Button(EscapeTab, "Тест: найти выход", function()
+    local escapePart = findEscapeTarget()
+    if escapePart then
+        NeverloseInstance:Notify("Auto Escape", "Выход: " .. escapePart:GetFullName(), 3)
+    else
+        NeverloseInstance:Notify("Auto Escape", "Выход не найден", 3)
+    end
+end)
+
+-- ============ SPEED TAB ============
+local SpeedTab = NeverloseInstance:Tab("Speed Hack")
+
+NeverloseInstance:Section(SpeedTab, "Скорость")
+NeverloseInstance:Toggle_(SpeedTab, "Включить Speed Hack", false, function(v)
+    SpeedConfig.Enabled = v
+end)
+NeverloseInstance:Slider(SpeedTab, "Скорость", 16, 300, 100, function(v)
+    SpeedConfig.Value = v
+end)
+
+-- ============ KILL ALL TAB ============
+local KillTab = NeverloseInstance:Tab("Kill All")
+
+NeverloseInstance:Section(KillTab, "Массовый телепорт")
+NeverloseInstance:Toggle_(KillTab, "Включить Kill All", false, function(v)
+    KillAllConfig.Enabled = v
+    if v then
+        NeverloseInstance:Notify("Kill All", "Все игроки будут телепортироваться к тебе", 3)
+    end
+end)
+NeverloseInstance:Slider(KillTab, "Интервал (x0.1s)", 1, 20, 3, function(v)
+    KillAllConfig.Interval = v * 0.1
+end)
+NeverloseInstance:Button(KillTab, "Телепорт всех к себе", function()
+    local count = killAllPlayers()
+    NeverloseInstance:Notify("Kill All", "Телепортировано игроков: " .. count, 3)
+end)
+
+-- ============ TP TAB ============
+local TPTab = NeverloseInstance:Tab("TP to Players")
+
+NeverloseInstance:Section(TPTab, "Быстрые действия")
+NeverloseInstance:Button(TPTab, "Телепорт к ближайшему игроку", function()
+    local nearest = teleportToNearestPlayer()
+    if nearest then
+        NeverloseInstance:Notify("TP", "Телепорт к: " .. nearest.Name, 2)
+    else
+        NeverloseInstance:Notify("TP", "Игроки не найдены", 2)
+    end
+end)
+
+NeverloseInstance:Button(TPTab, "Обновить список", function()
+    refreshPlayerList()
+    NeverloseInstance:Notify("TP", "Список обновлён", 2)
+end)
+
+NeverloseInstance:Section(TPTab, "Игроки")
+
+-- Контейнер для списка игроков
+local playerListHolder = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = TPTab.Page,
+})
+new("UIListLayout", {
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 4),
+    Parent = playerListHolder,
 })
 
-local PlayerTab = Window:CreateTab("Player ESP", 4483362458)
+local playerListButtons = {}
 
-PlayerTab:CreateToggle({
-	Name = "Включить ESP игроков",
-	CurrentValue = true, Flag = "PlayerESP_Enabled",
-	Callback = function(value)
-		PlayerESP.Enabled = value
-		if not value then clearAllPlayerESP() end
-	end,
-})
-
-PlayerTab:CreateToggle({
-	Name = "Видеть сквозь стены",
-	CurrentValue = true, Flag = "PlayerESP_SeeThroughWalls",
-	Callback = function(value)
-		PlayerESP.SeeThroughWalls = value
-		refreshPlayerStyles()
-	end,
-})
-
-PlayerTab:CreateSlider({
-	Name = "Макс. дистанция", Range = {50, 2000}, Increment = 50, Suffix = " studs",
-	CurrentValue = 1000, Flag = "PlayerESP_MaxDistance",
-	Callback = function(value) PlayerESP.MaxDistance = value refreshPlayerStyles() end,
-})
-
-PlayerTab:CreateToggle({
-	Name = "Показывать имя",
-	CurrentValue = true, Flag = "PlayerESP_ShowName",
-	Callback = function(value) PlayerESP.ShowName = value refreshPlayerStyles() end,
-})
-
-PlayerTab:CreateToggle({
-	Name = "Показывать расстояние",
-	CurrentValue = true, Flag = "PlayerESP_ShowDistance",
-	Callback = function(value) PlayerESP.ShowDistance = value refreshPlayerStyles() end,
-})
-
-PlayerTab:CreateColorPicker({
-	Name = "Цвет убийцы",
-	Color = Color3.fromRGB(255, 50, 50), Flag = "PlayerESP_KillerColor",
-	Callback = function(color) PlayerESP.KillerColor = color refreshPlayerStyles() end,
-})
-
-PlayerTab:CreateColorPicker({
-	Name = "Цвет выживших",
-	Color = Color3.fromRGB(0, 150, 255), Flag = "PlayerESP_SurvivorColor",
-	Callback = function(color) PlayerESP.SurvivorColor = color refreshPlayerStyles() end,
-})
-
-local LockerTab = Window:CreateTab("Locker ESP", 4483362458)
-
-LockerTab:CreateToggle({
-	Name = "Включить ESP шкафов",
-	CurrentValue = true, Flag = "LockerESP_Enabled",
-	Callback = function(value)
-		LockerESP.Enabled = value
-		if not value then clearAllLockerESP() end
-	end,
-})
-
-LockerTab:CreateSlider({
-	Name = "Макс. дистанция", Range = {100, 5000}, Increment = 100, Suffix = " studs",
-	CurrentValue = 2000, Flag = "LockerESP_MaxDistance",
-	Callback = function(value) LockerESP.MaxDistance = value end,
-})
-
-LockerTab:CreateSlider({
-	Name = "Радиус проверки", Range = {1, 15}, Increment = 1, Suffix = " studs",
-	CurrentValue = 5, Flag = "LockerESP_CheckRadius",
-	Callback = function(value) LockerESP.CheckRadius = value end,
-})
-
-LockerTab:CreateColorPicker({
-	Name = "Цвет пустого шкафа",
-	Color = Color3.fromRGB(0, 255, 100), Flag = "LockerESP_EmptyColor",
-	Callback = function(color) LockerESP.EmptyColor = color end,
-})
-
-LockerTab:CreateColorPicker({
-	Name = "Цвет занятого шкафа",
-	Color = Color3.fromRGB(255, 0, 0), Flag = "LockerESP_OccupiedColor",
-	Callback = function(color) LockerESP.OccupiedColor = color end,
-})
-
-local FarmTab = Window:CreateTab("Auto Farm", 4483362458)
-
-FarmTab:CreateToggle({
-	Name = "Включить Auto Farm",
-	CurrentValue = false, Flag = "Farm_Enabled",
-	Callback = function(value)
-		AutoFarm.Enabled = value
-		if value then
-			scanAllSpawnPoints()
-			currentSpawnIndex = 1
-		end
-	end,
-})
-
-FarmTab:CreateSlider({
-	Name = "Задержка телепорта", Range = {0.05, 2}, Increment = 0.05, Suffix = " сек",
-	CurrentValue = 0.25, Flag = "Farm_Delay",
-	Callback = function(value) AutoFarm.Delay = value end,
-})
-
-FarmTab:CreateSection("Способ фарма")
-
-FarmTab:CreateDropdown({
-	Name = "Способ передвижения",
-	Options = {"Teleport", "Tween (Fly)"},
-	CurrentOption = {"Teleport"},
-	Flag = "Farm_Mode",
-	Callback = function(option)
-		AutoFarm.Mode = option
-	end,
-})
-
-FarmTab:CreateSlider({
-	Name = "Скорость полёта (Tween)", Range = {1, 50}, Increment = 1, Suffix = "x",
-	CurrentValue = 20, Flag = "Farm_TweenSpeed",
-	Callback = function(value) AutoFarm.TweenSpeed = value end,
-})
-
-local AntiKillerTab = Window:CreateTab("Anti-Killer", 4483362458)
-
-AntiKillerTab:CreateToggle({
-	Name = "Включить Anti-Killer",
-	CurrentValue = false, Flag = "AntiKiller_Enabled",
-	Callback = function(value) AntiKiller.Enabled = value end,
-})
-
-AntiKillerTab:CreateSlider({
-	Name = "Безопасная дистанция", Range = {50, 300}, Increment = 10, Suffix = " studs",
-	CurrentValue = 150, Flag = "AntiKiller_SafeDistance",
-	Callback = function(value) AntiKiller.SafeDistance = value end,
-})
-
-AntiKillerTab:CreateButton({
-	Name = "Тест: найти убийцу",
-	Callback = function()
-		local killerChar = getKiller()
-		if killerChar then
-			Rayfield:Notify({ Title = "Anti-Killer", Content = "Убийца: " .. killerChar.Name, Duration = 3 })
-		else
-			Rayfield:Notify({ Title = "Anti-Killer", Content = "Убийца не найден", Duration = 3 })
-		end
-	end,
-})
-
-local EscapeTab = Window:CreateTab("Auto Escape", 4483362458)
-
-EscapeTab:CreateToggle({
-	Name = "Включить Auto Escape",
-	CurrentValue = false, Flag = "AutoEscape_Enabled",
-	Callback = function(value) AutoEscape.Enabled = value end,
-})
-
-EscapeTab:CreateButton({
-	Name = "Тест: найти выход",
-	Callback = function()
-		local escapePart = findEscapeTarget()
-		if escapePart then
-			Rayfield:Notify({ Title = "Auto Escape", Content = "Выход: " .. escapePart:GetFullName(), Duration = 3 })
-		else
-			Rayfield:Notify({ Title = "Auto Escape", Content = "Выход не найден", Duration = 3 })
-		end
-	end,
-})
-
-local SpeedTab = Window:CreateTab("Speed Hack", 4483362458)
-
-SpeedTab:CreateToggle({
-	Name = "Включить Speed Hack",
-	CurrentValue = false, Flag = "Speed_Enabled",
-	Callback = function(value) SpeedConfig.Enabled = value end,
-})
-
-SpeedTab:CreateSlider({
-	Name = "Скорость", Range = {16, 300}, Increment = 1, Suffix = " studs",
-	CurrentValue = 100, Flag = "Speed_Value",
-	Callback = function(value) SpeedConfig.Value = value end,
-})
-
-local KillTab = Window:CreateTab("Kill All", 4483362458)
-
-KillTab:CreateToggle({
-	Name = "Включить Kill All",
-	CurrentValue = false, Flag = "KillAll_Enabled",
-	Callback = function(value)
-		KillAllConfig.Enabled = value
-		if value then
-			Rayfield:Notify({
-				Title = "Kill All",
-				Content = "Все игроки будут телепортироваться к тебе",
-				Duration = 3,
-			})
-		end
-	end,
-})
-
-KillTab:CreateSlider({
-	Name = "Интервал телепорта", Range = {0.1, 2}, Increment = 0.1, Suffix = " сек",
-	CurrentValue = 0.3, Flag = "KillAll_Interval",
-	Callback = function(value) KillAllConfig.Interval = value end,
-})
-
-KillTab:CreateButton({
-	Name = "Телепорт всех к себе",
-	Callback = function()
-		local count = killAllPlayers()
-		Rayfield:Notify({
-			Title = "Kill All",
-			Content = "Телепортировано игроков: " .. count,
-			Duration = 3,
-		})
-	end,
-})
-
-local TPTab = Window:CreateTab("TP to Players", 4483362458)
-
-TPTab:CreateButton({
-	Name = "Телепорт к ближайшему игроку",
-	Callback = function()
-		local nearest = teleportToNearestPlayer()
-		if nearest then
-			Rayfield:Notify({
-				Title = "TP to Players",
-				Content = "Телепорт к: " .. nearest.Name,
-				Duration = 3,
-			})
-		else
-			Rayfield:Notify({
-				Title = "TP to Players",
-				Content = "Игроки не найдены",
-				Duration = 3,
-			})
-		end
-	end,
-})
-
-TPTab:CreateButton({
-	Name = "Обновить список игроков",
-	Callback = function()
-		local count = #Players:GetPlayers() - 1
-		Rayfield:Notify({
-			Title = "TP to Players",
-			Content = "Игроков на сервере: " .. count,
-			Duration = 3,
-		})
-	end,
-})
-
-local playerButtons = {}
-
-local function refreshPlayerList()
-	for _, btn in ipairs(playerButtons) do
-		pcall(function() btn:Destroy() end)
-	end
-	playerButtons = {}
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player == LocalPlayer then continue end
-
-		local btn = TPTab:CreateButton({
-			Name = "ТП к " .. player.Name,
-			Callback = function()
-				if teleportToPlayer(player) then
-					Rayfield:Notify({
-						Title = "TP to Players",
-						Content = "Телепорт к: " .. player.Name,
-						Duration = 2,
-					})
-				else
-					Rayfield:Notify({
-						Title = "TP to Players",
-						Content = "Не удалось телепортироваться к " .. player.Name,
-						Duration = 2,
-					})
-				end
-			end,
-		})
-		table.insert(playerButtons, btn)
-	end
+-- Проверка: игрок в лобби / в команде
+local function isPlayerInLobbyZone(player)
+    local char = player.Character
+    if not char then return true end
+    local check = char
+    while check do
+        if check.Name == "_Lobby" then return true end
+        if check == workspace then break end
+        check = check.Parent
+    end
+    if player.Team then
+        local teamName = string.lower(player.Team.Name)
+        if string.find(teamName, "lobby") or string.find(teamName, "лобби") then
+            return true
+        end
+    end
+    return false
 end
 
-TPTab:CreateButton({
-	Name = "Обновить список кнопок",
-	Callback = function()
-		refreshPlayerList()
-		Rayfield:Notify({
-			Title = "TP to Players",
-			Content = "Список обновлён",
-			Duration = 2,
-		})
-	end,
-})
+function refreshPlayerList()
+    for _, btn in ipairs(playerListButtons) do
+        pcall(function() btn:Destroy() end)
+    end
+    playerListButtons = {}
 
-local AntiAfkTab = Window:CreateTab("Anti AFK", 4483362458)
+    if not playerListHolder or not playerListHolder.Parent then return end
 
-AntiAfkTab:CreateToggle({
-	Name = "Включить Anti AFK",
-	CurrentValue = false, Flag = "AntiAFK_Enabled",
-	Callback = function(value)
-		AntiAFKConfig.Enabled = value
-		if value then
-			startAntiAfk()
-		else
-			stopAntiAfk()
-		end
-	end,
-})
+    local players = Players:GetPlayers()
+    local shown = 0
 
-local ControlTab = Window:CreateTab("Управление", 4483362458)
+    for _, player in ipairs(players) do
+        if player == LocalPlayer then continue end
 
-ControlTab:CreateButton({
-	Name = "Очистить все ESP",
-	Callback = function()
-		clearAllPlayerESP()
-		clearAllLockerESP()
-		Rayfield:Notify({ Title = "ESP", Content = "Все ESP удалены", Duration = 3 })
-	end,
-})
+        local inLobby = isPlayerInLobbyZone(player)
+        local char = player.Character
+        local pRoot = char and char:FindFirstChild("HumanoidRootPart")
 
-ControlTab:CreateButton({
-	Name = "Unload Script",
-	Callback = function()
-		unloaded = true
-		clearAllPlayerESP()
-		clearAllLockerESP()
-		stopAntiAfk()
-		if activeTween then
-			activeTween:Cancel()
-			activeTween = nil
-		end
-		for _, obj in ipairs(workspace:GetDescendants()) do
-			if obj.Name == "PlayerESP_Highlight" or obj.Name == "PlayerESP_Billboard"
-				or obj.Name == "LockerESP_Highlight" then
-				obj:Destroy()
-			end
-		end
-		PlayerESP.Enabled = false
-		LockerESP.Enabled = false
-		SpeedConfig.Enabled = false
-		KillAllConfig.Enabled = false
-		AutoFarm.Enabled = false
-		AntiKiller.Enabled = false
-		AutoEscape.Enabled = false
-		Rayfield:Destroy()
-		print("[STK ESP] Скрипт выгружен.")
-	end,
-})
+        -- Цвет: зелёный (на карте) / серый (в лобби/команде)
+        local dotColor = inLobby and Color3.fromRGB(140, 140, 155) or Color3.fromRGB(90, 220, 130)
+        local textColor = inLobby and Color3.fromRGB(140, 140, 155) or Theme.Text
+        local statusText = inLobby and "LOBBY" or "MAP"
 
-print("[STK ESP + Farm + Locker ESP + Anti AFK] Загружен. Меню по RightShift.")
+        -- Дистанция
+        local distText = "—"
+        if pRoot and LocalPlayer.Character then
+            local myRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot then
+                local d = math.floor((myRoot.Position - pRoot.Position).Magnitude)
+                distText = tostring(d) .. " st"
+            end
+        end
+
+        -- Ряд игрока
+        local row = new("Frame", {
+            Size = UDim2.new(1, 0, 0, 34),
+            BackgroundColor3 = Theme.Surface,
+            BorderSizePixel = 0,
+            Parent = playerListHolder,
+        })
+        corner(row, 6)
+        stroke(row, inLobby and Theme.Outline or Color3.fromRGB(60, 120, 70), 1, 0.5)
+
+        -- Точка-индикатор
+        local dot = new("Frame", {
+            Size = UDim2.new(0, 8, 0, 8),
+            Position = UDim2.new(0, 12, 0.5, -4),
+            BackgroundColor3 = dotColor,
+            BorderSizePixel = 0,
+            Parent = row,
+        })
+        corner(dot, 4)
+
+        -- Имя
+        new("TextLabel", {
+            Size = UDim2.new(1, -160, 1, 0),
+            Position = UDim2.new(0, 28, 0, 0),
+            BackgroundTransparency = 1,
+            Text = player.Name,
+            Font = Fonts.Medium,
+            TextSize = 13,
+            TextColor3 = textColor,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = row,
+        })
+
+        -- Статус
+        new("TextLabel", {
+            Size = UDim2.new(0, 60, 1, 0),
+            Position = UDim2.new(1, -120, 0, 0),
+            BackgroundTransparency = 1,
+            Text = statusText,
+            Font = Fonts.Bold,
+            TextSize = 10,
+            TextColor3 = dotColor,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = row,
+        })
+
+        -- Дистанция
+        new("TextLabel", {
+            Size = UDim2.new(0, 60, 1, 0),
+            Position = UDim2.new(1, -60, 0, 0),
+            BackgroundTransparency = 1,
+            Text = distText,
+            Font = Fonts.Regular,
+            TextSize = 11,
+            TextColor3 = Theme.TextDim,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = row,
+        })
+
+        -- Кнопка ТП (прозрачная поверх)
+        local tpBtn = new("TextButton", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            Parent = row,
+        })
+
+        tpBtn.MouseEnter:Connect(function()
+            tween(row, { BackgroundColor3 = Theme.SurfaceAlt })
+        end)
+        tpBtn.MouseLeave:Connect(function()
+            tween(row, { BackgroundColor3 = Theme.Surface })
+        end)
+        tpBtn.MouseButton1Click:Connect(function()
+            if teleportToPlayer(player) then
+                NeverloseInstance:Notify("TP", "Телепорт к: " .. player.Name, 2)
+            else
+                NeverloseInstance:Notify("TP", "Не удалось ТП к " .. player.Name, 2)
+            end
+        end)
+
+        table.insert(playerListButtons, row)
+        shown = shown + 1
+    end
+
+    if shown == 0 then
+        local empty = new("Frame", {
+            Size = UDim2.new(1, 0, 0, 34),
+            BackgroundColor3 = Theme.Surface,
+            BorderSizePixel = 0,
+            Parent = playerListHolder,
+        })
+        corner(empty, 6)
+        new("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "Нет других игроков",
+            Font = Fonts.Medium,
+            TextSize = 12,
+            TextColor3 = Theme.TextDim,
+            Parent = empty,
+        })
+        table.insert(playerListButtons, empty)
+    end
+end
+
+-- Авто-обновление списка каждые 2 сек
+task.spawn(function()
+    task.wait(0.5)
+    pcall(refreshPlayerList)
+    while not unloaded do
+        task.wait(2)
+        pcall(refreshPlayerList)
+    end
+end)
+
+-- Обновление при входе/выходе игроков
+Players.PlayerAdded:Connect(function()
+    task.wait(0.5)
+    pcall(refreshPlayerList)
+end)
+Players.PlayerRemoving:Connect(function()
+    task.wait(0.3)
+    pcall(refreshPlayerList)
+end)
+
+-- ============ ANTI AFK TAB ============
+local AntiAfkTab = NeverloseInstance:Tab("Anti AFK")
+
+NeverloseInstance:Section(AntiAfkTab, "AFK защита")
+NeverloseInstance:Toggle_(AntiAfkTab, "Включить Anti AFK", false, function(v)
+    AntiAFKConfig.Enabled = v
+    if v then
+        startAntiAfk()
+    else
+        stopAntiAfk()
+    end
+end)
+
+-- ============ CONTROL TAB ============
+local ControlTab = NeverloseInstance:Tab("Управление")
+
+NeverloseInstance:Section(ControlTab, "Действия")
+NeverloseInstance:Button(ControlTab, "Очистить все ESP", function()
+    clearAllPlayerESP()
+    clearAllLockerESP()
+    NeverloseInstance:Notify("ESP", "Все ESP удалены", 2)
+end)
+NeverloseInstance:Button(ControlTab, "Unload Script", function()
+    unloaded = true
+    clearAllPlayerESP()
+    clearAllLockerESP()
+    stopAntiAfk()
+    if activeTween then
+        activeTween:Cancel()
+        activeTween = nil
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "PlayerESP_Highlight" or obj.Name == "PlayerESP_Billboard"
+            or obj.Name == "LockerESP_Highlight" then
+            obj:Destroy()
+        end
+    end
+    PlayerESP.Enabled = false
+    LockerESP.Enabled = false
+    SpeedConfig.Enabled = false
+    KillAllConfig.Enabled = false
+    AutoFarm.Enabled = false
+    AntiKiller.Enabled = false
+    AutoEscape.Enabled = false
+    NeverloseInstance:Destroy()
+    print("[Lynxora] Скрипт выгружен.")
+end)
+
+print("[Lynxora UI] STK ESP + Farm загружен. K — открыть меню.")
