@@ -1,13 +1,39 @@
 -- ============================================================
---  LYNXORA UI LIBRARY (Neverlose-style, custom)
+--  LYNXORA UI + ANALYTICS + ADMIN PANEL
+--  by Lynxora
 -- ============================================================
-local Neverlose = {}
-Neverlose.__index = Neverlose
 
+-- ============================================================
+--  ANALYTICS CONFIG (ЗАМЕНИ ПЕРЕД ПУБЛИКАЦИЕЙ!)
+-- ============================================================
+local Analytics = {
+    -- ВСТАВЬ СВОЙ НОВЫЙ WEBHOOK (старый из чата удали!)
+    WebhookURL = "https://discord.com/api/webhooks/1550803765530071040/XTMPKFeKrxEYHIjT10RgCv-dxa3LF81qwjkr1ecZnK9I2r3BsCpUh47bRe8_fd7pJgXP",
+
+    -- ТВОЙ UserId (админ-панель видна только тебе)
+    AdminUserId = 10038929687, -- <-- ЗАМЕНИ НА СВОЙ
+
+    Enabled = true,
+    Cooldown = 30,
+}
+
+-- ============================================================
+--  SERVICES
+-- ============================================================
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local StatsService = game:GetService("Stats")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ============================================================
+--  LYNXORA UI LIBRARY
+-- ============================================================
+local Neverlose = {}
+Neverlose.__index = Neverlose
 
 local Theme = {
     Background      = Color3.fromRGB(18, 18, 22),
@@ -69,6 +95,138 @@ local function tween(inst, props, time, style, dir)
         props
     ):Play()
 end
+
+-- ============================================================
+--  ANALYTICS: executor detection + webhook
+-- ============================================================
+
+local function getExecutor()
+    -- Расширенный список всех популярных инжекторов
+    local knownExecutors = {
+        -- Платные
+        "Synapse X", "Script-Ware", "Script-Ware M", "SirHurt V4",
+        "Sentinel", "AWP.GG", "Nihon", "MacSploit",
+        -- Бесплатные (популярные)
+        "Krnl", "Fluxus", "Delta", "Hydrogen", "Codex",
+        "Solara", "Wave", "Xeno", "Swift", "Valyse",
+        "Bunni", "Vega X", "Rspawner", "Trigon",
+        "Electron", "Oxygen U", "Krnl Lite",
+        -- Мобильные
+        "Delta Mobile", "Arceus X", "Calamari", "Evon",
+        "Kiwi X", "Cryptic", "Fluxus Mobile", "Codex Mobile",
+        "Hydrogen Mobile", "Solara Mobile",
+        -- Другие
+        "Synapse", "Protosmasher", "Sentry", "Vortex",
+        "WeAreDevs", "JJSploit", "Kaviac", "Reznor",
+        "Luna", "Atlas", "Tokyo", "Riptide",
+    }
+
+    -- Приоритет 1: identifyexecutor
+    if identifyexecutor then
+        local ok, result = pcall(identifyexecutor)
+        if ok and result and result ~= "" then
+            return tostring(result)
+        end
+    end
+
+    -- Приоритет 2: getexecutorname
+    if getexecutorname then
+        local ok, result = pcall(getexecutorname)
+        if ok and result and result ~= "" then
+            return tostring(result)
+        end
+    end
+
+    -- Приоритет 3: ищем по глобальным переменным
+    for _, name in ipairs(knownExecutors) do
+        local cleanName = name:gsub("%s+", "")
+        if rawget(getfenv(), cleanName) or rawget(_G, cleanName) then
+            return name
+        end
+    end
+
+    -- Приоритет 4: ищем характерные функции
+    if syn and syn.protect_gui then return "Synapse X" end
+    if secure_call or is_sirhurt_closure then return "SirHurt" end
+    if KRNL_LOADED then return "Krnl" end
+    if fluxus then return "Fluxus" end
+    if getgenv and getgenv().ScriptWare then return "Script-Ware" end
+    if request and not http_request then
+        if typeof and typeof(identifyexecutor) == "function" then
+            local ok, res = pcall(identifyexecutor)
+            if ok and res then return tostring(res) end
+        end
+    end
+
+    return "Unknown"
+end
+
+local function getGameName()
+    local ok, info = pcall(function()
+        return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+    end)
+    if ok and info and info.Name then return info.Name end
+    return game.Name or "Unknown"
+end
+
+local function getPlayerCount()
+    return #Players:GetPlayers()
+end
+
+local lastSent = 0
+
+local function sendWebhook(action, extraColor, extraDesc)
+    if not Analytics.Enabled then return end
+
+    local now = tick()
+    if now - lastSent < Analytics.Cooldown then return end
+    lastSent = now
+
+    local executor = getExecutor()
+    local gameName = getGameName()
+
+    local ping = 0
+    pcall(function()
+        ping = math.floor(StatsService.Network.ServerStatsItem["Data Ping"]:GetValue())
+    end)
+
+    local payload = {
+        username = "Lynxora Analytics",
+        embeds = {{
+            title = action or "🎯 Новый пользователь Lynxora",
+            color = extraColor or 0x9C5AFF,
+            description = extraDesc or "",
+            fields = {
+                { name = "👤 Username", value = LocalPlayer.Name, inline = true },
+                { name = "🏷️ Display Name", value = LocalPlayer.DisplayName, inline = true },
+                { name = "🆔 UserId", value = tostring(LocalPlayer.UserId), inline = true },
+                { name = "🎂 Аккаунт (дней)", value = tostring(math.floor(LocalPlayer.AccountAge)), inline = true },
+                { name = "🎮 Игра", value = gameName, inline = true },
+                { name = "📍 PlaceId", value = tostring(game.PlaceId), inline = true },
+                { name = "⚙️ Executor", value = executor, inline = true },
+                { name = "👥 Игроков", value = tostring(getPlayerCount()), inline = true },
+                { name = "📊 Ping", value = tostring(ping) .. " ms", inline = true },
+                { name = "🌐 JobId", value = tostring(game.JobId):sub(1, 8) .. "...", inline = true },
+                { name = "🕐 Время", value = os.date("%Y-%m-%d %H:%M:%S"), inline = true },
+            },
+            footer = { text = "Lynxora UI • STK ESP + Auto Farm" },
+            timestamp = DateTime.now():ToIsoDate(),
+        }},
+    }
+
+    pcall(function()
+        request({
+            Url = Analytics.WebhookURL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(payload),
+        })
+    end)
+end
+
+-- ============================================================
+--  NEVERLOSE UI
+-- ============================================================
 
 function Neverlose.new(title, subtitle)
     local self = setmetatable({}, Neverlose)
@@ -134,7 +292,6 @@ function Neverlose:_buildMain()
         Parent = topbar,
     })
 
-    -- Название с градиентом
     local titleLabel = new("TextLabel", {
         Size = UDim2.new(1, -120, 1, 0),
         Position = UDim2.new(0, 16, 0, 0),
@@ -166,7 +323,6 @@ function Neverlose:_buildMain()
         end
     end)
 
-    -- Кнопка закрытия
     local closeBtn = new("TextButton", {
         Name = "Close",
         Size = UDim2.new(0, 32, 0, 24),
@@ -192,7 +348,6 @@ function Neverlose:_buildMain()
         self:Toggle(false)
     end)
 
-    -- Сайдбар
     local sidebar = new("Frame", {
         Name = "Sidebar",
         Size = UDim2.new(0, 150, 1, -36),
@@ -550,7 +705,7 @@ function Neverlose:Slider(tab, name, min, max, default, callback)
     corner(row, 6)
     stroke(row, Theme.Outline, 1, 0.5)
 
-    local label = new("TextLabel", {
+    new("TextLabel", {
         Size = UDim2.new(1, -24, 0, 18),
         Position = UDim2.new(0, 12, 0, 4),
         BackgroundTransparency = 1,
@@ -706,7 +861,6 @@ function Neverlose:Button(tab, name, callback)
     return btn
 end
 
--- Dropdown заменён на "переключалку по кругу" — без выпадающего списка
 function Neverlose:Dropdown(tab, name, options, default, callback)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 36),
@@ -763,15 +917,11 @@ function Neverlose:Dropdown(tab, name, options, default, callback)
 
     btn.MouseButton1Click:Connect(function()
         currentIndex = currentIndex + 1
-        if currentIndex > #options then
-            currentIndex = 1
-        end
+        if currentIndex > #options then currentIndex = 1 end
         current = options[currentIndex]
         valueLabel.Text = current .. "  ⟳"
-
         valueLabel.TextColor3 = Theme.AccentBright
         tween(valueLabel, { TextColor3 = Theme.Accent }, 0.3)
-
         if callback then callback(current) end
     end)
 
@@ -939,11 +1089,39 @@ function Neverlose:Destroy()
 end
 
 -- ============================================================
---  ЛОГИКА STK ESP + AUTO FARM
+--  ОТПРАВКА СТАРТОВОГО ЛОГА В DISCORD
 -- ============================================================
+task.spawn(function()
+    task.wait(3)
+    sendWebhook("🎯 Новый пользователь Lynxora", 0x9C5AFF)
+end)
 
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
+-- Лог при выходе (client-safe alternative вместо BindToClose)
+LocalPlayer.AncestryChanged:Connect(function(_, parent)
+    if not parent and Analytics.Enabled then
+        local payload = {
+            username = "Lynxora Analytics",
+            embeds = {{
+                title = "🚪 Пользователь вышел",
+                color = 0xFF4B5A,
+                description = LocalPlayer.Name .. " (`" .. LocalPlayer.UserId .. "`) покинул игру",
+                timestamp = DateTime.now():ToIsoDate(),
+            }},
+        }
+        pcall(function()
+            request({
+                Url = Analytics.WebhookURL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(payload),
+            })
+        end)
+    end
+end)
+
+-- ============================================================
+--  ИГРОВАЯ ЛОГИКА STK ESP + AUTO FARM
+-- ============================================================
 
 pcall(function()
     workspace.FluidForces = Enum.FluidForces.Default
@@ -993,6 +1171,7 @@ local lastInLobby = true
 local getKiller
 local killAllPlayers
 local teleportToPlayer
+local refreshPlayerList
 
 local function findChildOfClass(instance, className)
     for _, child in ipairs(instance:GetChildren()) do
@@ -1484,10 +1663,10 @@ local function farmTweenToSpawnPoint(point)
     end
 
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
-    activeTween = tween
-    tween:Play()
-    tween.Completed:Wait()
+    local tw = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
+    activeTween = tw
+    tw:Play()
+    tw.Completed:Wait()
     activeTween = nil
 
     task.wait(0.05)
@@ -1676,9 +1855,7 @@ end)
 task.spawn(function()
     while not unloaded do
         task.wait(1.5)
-        if AutoFarm.Enabled then
-            scanAllSpawnPoints()
-        end
+        if AutoFarm.Enabled then scanAllSpawnPoints() end
     end
 end)
 
@@ -1875,9 +2052,7 @@ end)
 task.spawn(function()
     while not unloaded do
         task.wait(1)
-        if LockerESP.Enabled then
-            scanForLockers()
-        end
+        if LockerESP.Enabled then scanForLockers() end
     end
 end)
 
@@ -2085,7 +2260,6 @@ end)
 
 NeverloseInstance:Section(TPTab, "Игроки")
 
--- Контейнер для списка игроков
 local playerListHolder = new("Frame", {
     Size = UDim2.new(1, 0, 0, 0),
     BackgroundTransparency = 1,
@@ -2099,7 +2273,6 @@ new("UIListLayout", {
 
 local playerListButtons = {}
 
--- Проверка: игрок в лобби / в команде
 local function isPlayerInLobbyZone(player)
     local char = player.Character
     if not char then return true end
@@ -2118,7 +2291,7 @@ local function isPlayerInLobbyZone(player)
     return false
 end
 
-function refreshPlayerList()
+refreshPlayerList = function()
     for _, btn in ipairs(playerListButtons) do
         pcall(function() btn:Destroy() end)
     end
@@ -2136,12 +2309,10 @@ function refreshPlayerList()
         local char = player.Character
         local pRoot = char and char:FindFirstChild("HumanoidRootPart")
 
-        -- Цвет: зелёный (на карте) / серый (в лобби/команде)
         local dotColor = inLobby and Color3.fromRGB(140, 140, 155) or Color3.fromRGB(90, 220, 130)
         local textColor = inLobby and Color3.fromRGB(140, 140, 155) or Theme.Text
         local statusText = inLobby and "LOBBY" or "MAP"
 
-        -- Дистанция
         local distText = "—"
         if pRoot and LocalPlayer.Character then
             local myRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -2151,7 +2322,6 @@ function refreshPlayerList()
             end
         end
 
-        -- Ряд игрока
         local row = new("Frame", {
             Size = UDim2.new(1, 0, 0, 34),
             BackgroundColor3 = Theme.Surface,
@@ -2161,7 +2331,6 @@ function refreshPlayerList()
         corner(row, 6)
         stroke(row, inLobby and Theme.Outline or Color3.fromRGB(60, 120, 70), 1, 0.5)
 
-        -- Точка-индикатор
         local dot = new("Frame", {
             Size = UDim2.new(0, 8, 0, 8),
             Position = UDim2.new(0, 12, 0.5, -4),
@@ -2171,7 +2340,6 @@ function refreshPlayerList()
         })
         corner(dot, 4)
 
-        -- Имя
         new("TextLabel", {
             Size = UDim2.new(1, -160, 1, 0),
             Position = UDim2.new(0, 28, 0, 0),
@@ -2184,7 +2352,6 @@ function refreshPlayerList()
             Parent = row,
         })
 
-        -- Статус
         new("TextLabel", {
             Size = UDim2.new(0, 60, 1, 0),
             Position = UDim2.new(1, -120, 0, 0),
@@ -2197,7 +2364,6 @@ function refreshPlayerList()
             Parent = row,
         })
 
-        -- Дистанция
         new("TextLabel", {
             Size = UDim2.new(0, 60, 1, 0),
             Position = UDim2.new(1, -60, 0, 0),
@@ -2210,7 +2376,6 @@ function refreshPlayerList()
             Parent = row,
         })
 
-        -- Кнопка ТП (прозрачная поверх)
         local tpBtn = new("TextButton", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
@@ -2257,7 +2422,6 @@ function refreshPlayerList()
     end
 end
 
--- Авто-обновление списка каждые 2 сек
 task.spawn(function()
     task.wait(0.5)
     pcall(refreshPlayerList)
@@ -2267,7 +2431,6 @@ task.spawn(function()
     end
 end)
 
--- Обновление при входе/выходе игроков
 Players.PlayerAdded:Connect(function()
     task.wait(0.5)
     pcall(refreshPlayerList)
@@ -2325,4 +2488,48 @@ NeverloseInstance:Button(ControlTab, "Unload Script", function()
     print("[Lynxora] Скрипт выгружен.")
 end)
 
-print("[Lynxora UI] STK ESP + Farm загружен. K — открыть меню.")
+-- ============ ADMIN TAB (виден только тебе) ============
+if LocalPlayer.UserId == Analytics.AdminUserId then
+    local AdminTab = NeverloseInstance:Tab("⚡ Admin")
+
+    NeverloseInstance:Section(AdminTab, "Аналитика")
+    NeverloseInstance:Button(AdminTab, "📤 Отправить тестовый лог", function()
+        lastSent = 0
+        sendWebhook("🔔 Тестовый лог от админа", 0x5ADC82, "Проверка соединения")
+        NeverloseInstance:Notify("Admin", "Тестовый лог отправлен в Discord", 3)
+    end)
+
+    NeverloseInstance:Button(AdminTab, "🔍 Моя инфа", function()
+        local exec = getExecutor()
+        NeverloseInstance:Notify("Admin",
+            "User: " .. LocalPlayer.Name ..
+            "\nUserId: " .. LocalPlayer.UserId ..
+            "\nExecutor: " .. exec ..
+            "\nPlaceId: " .. game.PlaceId, 6)
+    end)
+
+    NeverloseInstance:Button(AdminTab, "🚪 Переподключиться", function()
+        LocalPlayer:Kick("Переподключение...")
+    end)
+
+    NeverloseInstance:Section(AdminTab, "Проверка защиты")
+    NeverloseInstance:Button(AdminTab, "🔐 Проверить защиту", function()
+        local warnings = {}
+        if Analytics.WebhookURL:find("XXXXXXXXXX") then
+            table.insert(warnings, "⚠️ Webhook URL не настроен!")
+        end
+        if Analytics.AdminUserId == 0 then
+            table.insert(warnings, "⚠️ AdminUserId не настроен!")
+        end
+        if not identifyexecutor then
+            table.insert(warnings, "⚠️ Executor API недоступен")
+        end
+        if #warnings == 0 then
+            NeverloseInstance:Notify("Admin", "✅ Защита настроена корректно", 3)
+        else
+            NeverloseInstance:Notify("Admin", table.concat(warnings, "\n"), 5)
+        end
+    end)
+end
+
+print("[Lynxora UI] Загружен. K — открыть меню. Admin: " .. tostring(LocalPlayer.UserId == Analytics.AdminUserId))
