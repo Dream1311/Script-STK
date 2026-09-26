@@ -8,7 +8,7 @@
 -- ============================================================
 local Analytics = {
     -- ВСТАВЬ СВОЙ НОВЫЙ WEBHOOK (старый из чата удали!)
-    WebhookURL = "https://discord.com/api/webhooks/1550803765530071040/XTMPKFeKrxEYHIjT10RgCv-dxa3LF81qwjkr1ecZnK9I2r3BsCpUh47bRe8_fd7pJgXP",
+    WebhookURL = "https://discord.com/api/webhooks/1553469568016719953/AXjPS1pnc6owBNmU1kGBhAVOJaIjENNvEJnMDosFQ9DNHx6dAY--6-n7rWXe4cS5oHMb",
 
     -- ТВОЙ UserId (админ-панель видна только тебе)
     AdminUserId = 10038929687, -- <-- ЗАМЕНИ НА СВОЙ
